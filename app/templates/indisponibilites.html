@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Indisponibilités - Planning EJP</title>
+    <!-- Intégration de Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Intégration de Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body class="bg-light">
+
+<!-- Barre de navigation -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+    <div class="container">
+        <div class="d-flex align-items-center">
+            <a class="navbar-brand fw-bold me-2" href="/">Planning EJP</a>
+            <span class="badge bg-secondary">Département : Coordination</span>
+        </div>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/membres">Membres</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" aria-current="page" href="/indisponibilites">Indisponibilités</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/generateur">Générateur de Planning</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container py-3">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h3 mb-0 text-gray-800">Gestion des Indisponibilités</h2>
+    </div>
+
+    <div class="row">
+        <!-- Formulaire d'ajout (colonne de gauche) -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h6 class="m-0 font-weight-bold text-primary">Ajouter une indisponibilité</h6>
+                </div>
+                <div class="card-body">
+                    <form action="/indisponibilites" method="POST">
+                        <div class="mb-3">
+                            <label for="membre_id" class="form-label text-muted small fw-bold">Membre</label>
+                            <select class="form-select" id="membre_id" name="membre_id" required>
+                                <option value="" selected disabled>Choisir un membre...</option>
+                                {% for membre in membres %}
+                                <option value="{{ membre.id }}">{{ membre.nom }} {{ membre.prenom or '' }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="role_id" class="form-label text-muted small fw-bold">Activité concernée</label>
+                            <select class="form-select" id="role_id" name="role_id">
+                                <option value="">Toute activité (Indisponibilité générale)</option>
+                                {% for role in roles %}
+                                <option value="{{ role.id }}">{{ role.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label for="date_indispo" class="form-label text-muted small fw-bold">Dates</label>
+                            <input type="text" class="form-control" id="date_indispo" name="date_indispo" placeholder="Sélectionnez les dates" required>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-warning">Enregistrer l'indisponibilité</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tableau des indisponibilités (colonne de droite) -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h6 class="m-0 font-weight-bold text-primary">Liste des indisponibilités enregistrées</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle mb-0">
+                            <thead class="table-light text-muted small uppercase">
+                                <tr>
+                                    <th class="ps-4">Date</th>
+                                    <th>Membre Indisponible</th>
+                                    <th>Activité</th>
+                                    <th class="text-end pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for indispo in indisponibilites %}
+                                <tr>
+                                    <td class="ps-4 fw-bold text-danger">{{ indispo.date.strftime('%d/%m/%Y') }}</td>
+                                    <td>
+                                        <div class="text-dark">{{ indispo.membre.nom }} {{ indispo.membre.prenom or '' }}</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge rounded-pill {% if indispo.role_id %}text-bg-info{% else %}text-bg-secondary{% endif %} text-white shadow-sm" style="font-size: 0.75rem;">
+                                            {{ indispo.role.nom if indispo.role_id else 'Toutes' }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <form action="/indisponibilites/{{ indispo.id }}/supprimer" method="POST" style="display:inline;">
+                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Confirmer la suppression définitive ?');">🗑️</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-5 text-muted">
+                                        <div class="mb-2">📅</div>
+                                        Aucune indisponibilité n'a été enregistrée.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Intégration de Bootstrap 5 JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+<!-- Intégration de Flatpickr JS -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://npmcdn.com/flatpickr/dist/l10n/fr.js"></script>
+<script>
+    flatpickr("#date_indispo", {
+        mode: "multiple",
+        dateFormat: "Y-m-d",
+        locale: "fr"
+    });
+</script>
+</body>
+</html>
