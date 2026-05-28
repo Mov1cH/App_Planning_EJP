@@ -187,7 +187,16 @@ def post_register(
     # Vérifier si l'email existe déjà
     existant = db.query(models.Eglise).filter(models.Eglise.email == email).first()
     if existant:
-        return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Cet email est déjà utilisé"})
+        if existant.is_verified:
+            return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Cet email est déjà utilisé."})
+        else:
+            # Le compte existe mais n'a pas été vérifié : on met à jour et on renvoie un nouveau code
+            existant.nom_eglise = nom_eglise
+            existant.mot_de_passe_hash = pwd_context.hash(mot_de_passe)
+            existant.verification_code = str(random.randint(100000, 999999))
+            db.commit()
+            envoyer_email_verification(email, existant.verification_code)
+            return RedirectResponse(url=f"/verifier_email?email={email}", status_code=303)
     
     nouvelle_eglise = models.Eglise(
         nom_eglise=nom_eglise,
