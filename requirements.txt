@@ -7,3 +7,4 @@ python-multipart
 passlib[bcrypt]
 fpdf
 psycopg2-binary
+itsdangerous
