@@ -27,6 +27,11 @@
                             <input type="number" class="form-control" id="quota" name="quota" value="1" min="1" required>
                             <div class="form-text small">Combien de personnes faut-il pour ce rôle à chaque culte ?</div>
                         </div>
+                        <div class="mb-4">
+                            <label for="ordre" class="form-label text-muted small fw-bold">Position d'affichage</label>
+                            <input type="number" class="form-control" id="ordre" name="ordre" value="0" required>
+                            <div class="form-text small">Les numéros les plus petits (0, 1, 2...) apparaîtront en premier sur le planning.</div>
+                        </div>
                         
                         <div class="d-grid">
                             <button type="submit" class="btn btn-primary">Enregistrer le rôle</button>
@@ -49,6 +54,7 @@
                                 <tr>
                                     <th class="ps-4">Activité</th>
                                     <th>Quota</th>
+                                    <th>Position</th>
                                     <th class="text-end pe-4">Actions</th>
                                 </tr>
                             </thead>
@@ -61,7 +67,11 @@
                                             {{ role.quota }} personne(s)
                                         </span>
                                     </td>
+                                    <td class="text-muted small">
+                                        Ordre : {{ role.ordre }}
+                                    </td>
                                     <td class="text-end pe-4">
+                                        <a href="/roles/{{ role.id }}/modifier" class="btn btn-sm btn-warning">✏️</a>
                                         <form action="/roles/{{ role.id }}/supprimer" method="POST" style="display:inline;">
                                             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Confirmer la suppression ? Cela effacera ce rôle dans le profil de tous les membres concernés.');">🗑️</button>
                                         </form>

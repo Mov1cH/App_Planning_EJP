@@ -46,6 +46,7 @@ class Role(Base):
     id = Column(Integer, primary_key=True, index=True)
     nom = Column(String, index=True) # ex: Modération, Prédication
     quota = Column(Integer, default=1)
+    ordre = Column(Integer, default=0)
     eglise_id = Column(Integer, ForeignKey("eglises.id"))
 
     eglise = relationship("Eglise", back_populates="roles")

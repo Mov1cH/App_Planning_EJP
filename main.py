@@ -2,6 +2,8 @@
 #  http://localhost:8000 # lien pour accéder à l'application dans le navigateur
 #  http://127.0.0.1:8000 # lien pour accéder à l'application dans le navigateur
 #https://planning-ejp-ste.onrender.com # lien pour accéder à l'application déployée sur Render
+# https://planning-ejp-ste.onrender.com/setup-admin?email=movichlemec@gmail.com&password=admin123&secret=maclesecrete2024 # lien pour initialiser la base de données et créer un compte administrateur (à supprimer après utilisation pour des raisons de sécurité)
+
 
 from fastapi import FastAPI, Request, Form, Depends, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,6 +16,8 @@ import random
 import os
 import re
 import secrets
+import csv
+import io
 from fpdf import FPDF
 from passlib.context import CryptContext
 from starlette.middleware.sessions import SessionMiddleware
@@ -106,7 +110,8 @@ def setup_admin(email: str, password: str, secret: str, db: Session = Depends(ge
         "ALTER TABLE eglises ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE eglises ADD COLUMN is_verified BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE eglises ADD COLUMN verification_code VARCHAR;",
-        "ALTER TABLE eglises ADD COLUMN reset_token VARCHAR;"
+        "ALTER TABLE eglises ADD COLUMN reset_token VARCHAR;",
+        "ALTER TABLE roles ADD COLUMN ordre INTEGER DEFAULT 0;"
     ]
     with engine.connect() as conn:
         for req in requetes:
@@ -295,7 +300,7 @@ def read_root(request: Request, current_eglise: models.Eglise = Depends(get_curr
 # --- GESTION DYNAMIQUES DES RÔLES ---
 @app.get("/roles", response_class=HTMLResponse)
 def get_roles(request: Request, db: Session = Depends(get_db), current_eglise: models.Eglise = Depends(get_current_eglise)):
-    roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).all()
+    roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
     return templates.TemplateResponse(request=request, name="roles.html", context={"roles": roles, "current_eglise": current_eglise})
 
 @app.post("/roles", response_class=HTMLResponse)
@@ -303,13 +308,14 @@ def post_role(
     request: Request,
     nom: str = Form(...),
     quota: int = Form(1),
+    ordre: int = Form(0),
     db: Session = Depends(get_db),
     current_eglise: models.Eglise = Depends(get_current_eglise)
 ):
-    nouveau_role = models.Role(nom=nom, quota=quota, eglise_id=current_eglise.id)
+    nouveau_role = models.Role(nom=nom, quota=quota, ordre=ordre, eglise_id=current_eglise.id)
     db.add(nouveau_role)
     db.commit()
-    roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).all()
+    roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
     return templates.TemplateResponse(request=request, name="roles.html", context={"roles": roles, "current_eglise": current_eglise})
 
 @app.post("/roles/{role_id}/supprimer", response_class=RedirectResponse)
@@ -320,6 +326,33 @@ def supprimer_role(role_id: int, db: Session = Depends(get_db), current_eglise: 
         db.query(models.Planning).filter(models.Planning.role_id == role_id).delete()
         db.delete(role)
         db.commit()
+    return RedirectResponse(url="/roles", status_code=303)
+
+@app.get("/roles/{role_id}/modifier", response_class=HTMLResponse)
+def get_modifier_role(role_id: int, request: Request, db: Session = Depends(get_db), current_eglise: models.Eglise = Depends(get_current_eglise)):
+    role = db.query(models.Role).filter(models.Role.id == role_id, models.Role.eglise_id == current_eglise.id).first()
+    if not role:
+        return RedirectResponse(url="/roles", status_code=303)
+    return templates.TemplateResponse(request=request, name="modifier_role.html", context={"role": role, "current_eglise": current_eglise})
+
+@app.post("/roles/{role_id}/modifier", response_class=RedirectResponse)
+def post_modifier_role(
+    role_id: int,
+    request: Request,
+    nom: str = Form(...),
+    quota: int = Form(1),
+    ordre: int = Form(0),
+    db: Session = Depends(get_db),
+    current_eglise: models.Eglise = Depends(get_current_eglise)
+):
+    role = db.query(models.Role).filter(models.Role.id == role_id, models.Role.eglise_id == current_eglise.id).first()
+    if not role:
+        return RedirectResponse(url="/roles", status_code=303)
+        
+    role.nom = nom
+    role.quota = quota
+    role.ordre = ordre
+    db.commit()
     return RedirectResponse(url="/roles", status_code=303)
 
 
@@ -465,7 +498,7 @@ def get_generateur(request: Request, annee: Optional[int] = None, mois: Optional
                 dimanches.append(date(annee, mois, semaine[calendar.SUNDAY]))
                 
         # Récupération dynamique des rôles créés par l'église
-        roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).all()
+        roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
         
         matrice = {}
         for role in roles_eglise:
@@ -535,7 +568,7 @@ async def post_generer_planning(
             toutes_indispos = db.query(models.Indisponibilite).filter(models.Indisponibilite.eglise_id == current_eglise.id).all()
             indispos_du_jour = [i for i in toutes_indispos if str(i.date) == date_str]
             
-            roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).all()
+            roles = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
             
             for role in roles:
                 quantite = role.quota
@@ -625,7 +658,7 @@ async def export_planning_pdf(annee: int, mois: int, db: Session = Depends(get_d
         if semaine[calendar.SUNDAY] != 0:
             dimanches.append(date(annee, mois, semaine[calendar.SUNDAY]))
             
-    roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).all()
+    roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
     
     matrice = {}
     for role in roles_eglise:
@@ -712,7 +745,60 @@ async def export_planning_pdf(annee: int, mois: int, db: Session = Depends(get_d
             
         pdf.set_xy(x_start, y_start + row_height)
         
-    return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=planning_{current_eglise.nom_eglise.replace(' ', '_').lower()}_{str(mois).zfill(2)}_{annee}.pdf"})
+    # Récupération sécurisée du PDF (gestion de l'encodage selon la version de FPDF)
+    pdf_out = pdf.output(dest='S')
+    pdf_bytes = pdf_out.encode('latin-1') if isinstance(pdf_out, str) else bytes(pdf_out)
+    
+    nom_fichier = f"planning_{current_eglise.nom_eglise.replace(' ', '_').lower()}_{str(mois).zfill(2)}_{annee}.pdf"
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'})
+
+# --- EXPORTATION EXCEL / CSV ---
+@app.get("/planning/exporter/excel")
+async def export_planning_excel(annee: int, mois: int, db: Session = Depends(get_db), current_eglise: models.Eglise = Depends(get_current_eglise)):
+    date_debut = date(annee, mois, 1)
+    date_fin = date(annee, mois, calendar.monthrange(annee, mois)[1])
+    plannings = db.query(models.Planning).filter(
+        models.Planning.eglise_id == current_eglise.id,
+        models.Planning.date >= date_debut,
+        models.Planning.date <= date_fin
+    ).all()
+
+    dimanches = []
+    cal = calendar.monthcalendar(annee, mois)
+    for semaine in cal:
+        if semaine[calendar.SUNDAY] != 0:
+            dimanches.append(date(annee, mois, semaine[calendar.SUNDAY]))
+            
+    roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
+    
+    matrice = {}
+    for role in roles_eglise:
+        matrice[role.nom] = {d: [] for d in dimanches}
+        
+    for planning in plannings:
+        if planning.role.nom in matrice and planning.date in matrice[planning.role.nom]:
+            nom_complet = f"{planning.membre.prenom} {planning.membre.nom}" if planning.membre.prenom else planning.membre.nom
+            matrice[planning.role.nom][planning.date].append(nom_complet)
+
+    output = io.StringIO()
+    # On utilise le point-virgule, c'est le standard pour que les Excel francophones séparent bien les colonnes
+    writer = csv.writer(output, delimiter=';') 
+    
+    en_tete = ["Activite / Role"] + [d.strftime('%d/%m/%Y') for d in dimanches]
+    writer.writerow(en_tete)
+    
+    for role in roles_eglise:
+        ligne = [role.nom]
+        for d in dimanches:
+            personnes = matrice[role.nom][d]
+            ligne.append(", ".join(personnes) if personnes else "-")
+        writer.writerow(ligne)
+        
+    nom_fichier = f"planning_{current_eglise.nom_eglise.replace(' ', '_').lower()}_{str(mois).zfill(2)}_{annee}.csv"
+    # utf-8-sig est très important : il force Excel à comprendre les accents correctement (é, à, etc.)
+    csv_bytes = output.getvalue().encode('utf-8-sig') 
+    
+    return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'})
 
 if __name__ == "__main__":
     import uvicorn
