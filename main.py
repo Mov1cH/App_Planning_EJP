@@ -44,10 +44,10 @@ templates = Jinja2Templates(directory="app/templates")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- CONFIGURATION SMTP ---
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER = os.getenv("SMTP_USER", "votre_email@gmail.com") 
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "votre_mot_de_passe")
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USER = "movichlemec@gmail.com"
+SMTP_PASSWORD = "oeihorxxtpirnpzm"
 
 def envoyer_email_verification(destinataire: str, code: str):
     try:
