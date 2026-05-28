@@ -3,4 +3,4 @@
 python init_db.py
 
 # Démarrer l'application avec Gunicorn et Uvicorn
-exec gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+exec gunicorn main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
