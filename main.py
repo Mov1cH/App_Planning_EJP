@@ -93,6 +93,49 @@ def get_current_eglise(request: Request, db: Session = Depends(get_db)):
         raise NotAuthenticatedException()
     return eglise
 
+# --- ROUTE D'INITIALISATION SECRÈTE (POUR RENDER GRATUIT) ---
+@app.get("/setup-admin")
+def setup_admin(email: str, password: str, secret: str, db: Session = Depends(get_db)):
+    # Sécurité basique pour empêcher n'importe qui de lancer ce script
+    if secret != "maclesecrete2024":
+        return {"erreur": "Code secret invalide"}
+        
+    # 1. Mise à jour de la base de données (équivalent de update_db.py)
+    from sqlalchemy import text
+    requetes = [
+        "ALTER TABLE eglises ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE eglises ADD COLUMN is_verified BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE eglises ADD COLUMN verification_code VARCHAR;",
+        "ALTER TABLE eglises ADD COLUMN reset_token VARCHAR;"
+    ]
+    with engine.connect() as conn:
+        for req in requetes:
+            try:
+                conn.execute(text(req))
+                conn.commit()
+            except Exception:
+                conn.rollback() # Ignore l'erreur si la colonne existe déjà
+
+    # 2. Création ou mise à jour de l'administrateur (équivalent de create_admin.py)
+    existant = db.query(models.Eglise).filter(models.Eglise.email == email).first()
+    if existant:
+        existant.is_admin = True
+        existant.mot_de_passe_hash = pwd_context.hash(password)
+        existant.is_verified = True
+        db.commit()
+        return {"statut": "succès", "message": f"Le compte existant {email} a été mis à jour et est maintenant Administrateur."}
+    else:
+        admin = models.Eglise(
+            nom_eglise="Admin Global",
+            email=email,
+            mot_de_passe_hash=pwd_context.hash(password),
+            is_admin=True,
+            is_verified=True # Validé automatiquement !
+        )
+        db.add(admin)
+        db.commit()
+        return {"statut": "succès", "message": f"Le compte administrateur {email} a été créé avec succès."}
+
 # --- ROUTES D'AUTHENTIFICATION ---
 
 @app.get("/login", response_class=HTMLResponse)
