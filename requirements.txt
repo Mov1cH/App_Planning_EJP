@@ -5,6 +5,7 @@ sqlalchemy
 jinja2
 python-multipart
 passlib[bcrypt]
+bcrypt==3.2.2
 fpdf
 psycopg2-binary
 itsdangerous
