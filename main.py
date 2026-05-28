@@ -4,7 +4,6 @@
 #https://planning-ejp-ste.onrender.com # lien pour accéder à l'application déployée sur Render
 # https://planning-ejp-ste.onrender.com/setup-admin?email=movichlemec@gmail.com&password=admin123&secret=maclesecrete2024 # lien pour initialiser la base de données et créer un compte administrateur (à supprimer après utilisation pour des raisons de sécurité)
 
-
 from fastapi import FastAPI, Request, Form, Depends, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -18,6 +17,7 @@ import re
 import secrets
 import csv
 import io
+import asyncio  # Nécessaire pour l'envoi de mail non-bloquant
 from fpdf import FPDF
 from passlib.context import CryptContext
 from starlette.middleware.sessions import SessionMiddleware
@@ -43,41 +43,55 @@ templates = Jinja2Templates(directory="app/templates")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- CONFIGURATION SMTP ---
+# --- CONFIGURATION SMTP SÉCURISÉE ET DYNAMIQUE ---
+# Lit d'abord les variables configurées sur Render. Si absentes, utilise vos valeurs par défaut.
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SMTP_USER = "movichlemec@gmail.com"
-SMTP_PASSWORD = "oeihorxxtpirnpzm"
+SMTP_PORT = 465  # Utilisation du port SSL (plus stable sur Render)
+SMTP_USER = os.environ.get("EMAIL_ADDRESS", "movichlemec@gmail.com")
+SMTP_PASSWORD = os.environ.get("EMAIL_PASSWORD", "oeihorxxtpirnpzm")
 
-def envoyer_email_verification(destinataire: str, code: str):
+def execution_envoi_verification(destinataire: str, code: str):
+    """Fonction synchrone exécutée dans un thread séparé pour ne pas figer l'application."""
     try:
         msg = MIMEText(f"Bonjour,\n\nVotre code de vérification à 6 chiffres est : {code}\n\nMerci de vous être inscrit sur Planning EJP.")
         msg['Subject'] = 'Vérification de votre compte Planning EJP'
         msg['From'] = f"Planning EJP <{SMTP_USER}>"
         msg['To'] = destinataire
 
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
+        # Connexion en SSL direct sur le port 465 avec un timeout de 8 secondes
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=8)
         server.login(SMTP_USER, SMTP_PASSWORD)
         server.send_message(msg)
         server.quit()
+        print(f"[SMTP] Email de vérification envoyé avec succès à {destinataire}")
     except Exception as e:
-        print(f"Erreur lors de l'envoi de l'email : {e}")
+        print(f"[SMTP] Erreur lors de l'envoi de l'email : {e}")
 
-def envoyer_email_reinitialisation(destinataire: str, lien: str):
+def execution_envoi_reinitialisation(destinataire: str, lien: str):
+    """Fonction synchrone exécutée dans un thread séparé pour le mot de passe oublié."""
     try:
         msg = MIMEText(f"Bonjour,\n\nVous avez demandé la réinitialisation de votre mot de passe sur Planning EJP.\n\nCliquez sur ce lien sécurisé pour en créer un nouveau : {lien}\n\nSi vous n'êtes pas à l'origine de cette demande, vous pouvez simplement ignorer cet email.")
         msg['Subject'] = 'Réinitialisation de votre mot de passe - Planning EJP'
         msg['From'] = f"Planning EJP <{SMTP_USER}>"
         msg['To'] = destinataire
 
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
+        server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=8)
         server.login(SMTP_USER, SMTP_PASSWORD)
         server.send_message(msg)
         server.quit()
+        print(f"[SMTP] Email de réinitialisation envoyé avec succès à {destinataire}")
     except Exception as e:
-        print(f"Erreur lors de l'envoi de l'email de réinitialisation : {e}")
+        print(f"[SMTP] Erreur lors de l'envoi de l'email de réinitialisation : {e}")
+
+# Fonctions asynchrones appelées par les routes (Zéro chargement infini)
+async def envoyer_email_verification(destinataire: str, code: str):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, execution_envoi_verification, destinataire, code)
+
+async def envoyer_email_reinitialisation(destinataire: str, lien: str):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, execution_envoi_reinitialisation, destinataire, lien)
+
 
 class NotAuthenticatedException(Exception):
     pass
@@ -100,11 +114,9 @@ def get_current_eglise(request: Request, db: Session = Depends(get_db)):
 # --- ROUTE D'INITIALISATION SECRÈTE (POUR RENDER GRATUIT) ---
 @app.get("/setup-admin")
 def setup_admin(email: str, password: str, secret: str, db: Session = Depends(get_db)):
-    # Sécurité basique pour empêcher n'importe qui de lancer ce script
     if secret != "maclesecrete2024":
         return {"erreur": "Code secret invalide"}
         
-    # 1. Mise à jour de la base de données (équivalent de update_db.py)
     from sqlalchemy import text
     requetes = [
         "ALTER TABLE eglises ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;",
@@ -119,9 +131,8 @@ def setup_admin(email: str, password: str, secret: str, db: Session = Depends(ge
                 conn.execute(text(req))
                 conn.commit()
             except Exception:
-                conn.rollback() # Ignore l'erreur si la colonne existe déjà
+                conn.rollback()
 
-    # 2. Création ou mise à jour de l'administrateur (équivalent de create_admin.py)
     existant = db.query(models.Eglise).filter(models.Eglise.email == email).first()
     if existant:
         existant.is_admin = True
@@ -135,7 +146,7 @@ def setup_admin(email: str, password: str, secret: str, db: Session = Depends(ge
             email=email,
             mot_de_passe_hash=pwd_context.hash(password),
             is_admin=True,
-            is_verified=True # Validé automatiquement !
+            is_verified=True
         )
         db.add(admin)
         db.commit()
@@ -172,30 +183,27 @@ def get_register(request: Request):
     return templates.TemplateResponse(request=request, name="register.html")
 
 @app.post("/register", response_class=HTMLResponse)
-def post_register(
+async def post_register(
     request: Request,
     nom_eglise: str = Form(...),
     email: str = Form(...),
     mot_de_passe: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Validation stricte du format de l'email
     email_regex = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
     if not email_regex.match(email):
         return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Veuillez entrer une adresse email valide."})
 
-    # Vérifier si l'email existe déjà
     existant = db.query(models.Eglise).filter(models.Eglise.email == email).first()
     if existant:
         if existant.is_verified:
             return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Cet email est déjà utilisé."})
         else:
-            # Le compte existe mais n'a pas été vérifié : on met à jour et on renvoie un nouveau code
             existant.nom_eglise = nom_eglise
             existant.mot_de_passe_hash = pwd_context.hash(mot_de_passe)
             existant.verification_code = str(random.randint(100000, 999999))
             db.commit()
-            envoyer_email_verification(email, existant.verification_code)
+            await envoyer_email_verification(email, existant.verification_code)
             return RedirectResponse(url=f"/verifier_email?email={email}", status_code=303)
     
     nouvelle_eglise = models.Eglise(
@@ -209,7 +217,6 @@ def post_register(
     db.commit()
     db.refresh(nouvelle_eglise)
     
-    # Création automatique des rôles par défaut pour cette nouvelle église
     roles_par_defaut = [
         'Prière des STAR',
         'Modération',
@@ -224,8 +231,8 @@ def post_register(
         
     db.commit()
 
-    # Envoi de l'email et redirection vers la page de vérification
-    envoyer_email_verification(email, nouvelle_eglise.verification_code)
+    # Appel de la fonction asynchrone (le site change de page sans attendre la fin du SMTP)
+    await envoyer_email_verification(email, nouvelle_eglise.verification_code)
     return RedirectResponse(url=f"/verifier_email?email={email}", status_code=303)
 
 @app.get("/verifier_email", response_class=HTMLResponse)
@@ -262,18 +269,15 @@ def get_mot_de_passe_oublie(request: Request):
     return templates.TemplateResponse(request=request, name="forgot_password.html")
 
 @app.post("/mot-de-passe-oublie", response_class=HTMLResponse)
-def post_mot_de_passe_oublie(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
+async def post_mot_de_passe_oublie(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
     eglise = db.query(models.Eglise).filter(models.Eglise.email == email).first()
     if eglise:
-        # Générer un token sécurisé à 32 caractères
         token = secrets.token_urlsafe(32)
         eglise.reset_token = token
         db.commit()
-        # Construire le lien avec l'URL de base dynamique (fonctionne en local et sur Render)
         lien = str(request.base_url) + f"reinitialiser-mot-de-passe?token={token}"
-        envoyer_email_reinitialisation(email, lien)
+        await envoyer_email_reinitialisation(email, lien)
     
-    # Message volontairement vague pour ne pas dévoiler si un compte existe ou non (Sécurité anti-scan)
     return templates.TemplateResponse(request=request, name="forgot_password.html", context={"succes": "Si cette adresse est associée à un compte, un email contenant les instructions de réinitialisation vous a été envoyé."})
 
 @app.get("/reinitialiser-mot-de-passe", response_class=HTMLResponse)
@@ -452,7 +456,6 @@ async def post_indisponibilite(
     db: Session = Depends(get_db),
     current_eglise: models.Eglise = Depends(get_current_eglise)
 ):
-    # Vérifier que le membre appartient bien à l'église
     membre = db.query(models.Membre).filter(models.Membre.id == membre_id, models.Membre.eglise_id == current_eglise.id).first()
     if not membre:
         return RedirectResponse(url="/indisponibilites", status_code=303)
@@ -506,7 +509,6 @@ def get_generateur(request: Request, annee: Optional[int] = None, mois: Optional
             if semaine[calendar.SUNDAY] != 0:
                 dimanches.append(date(annee, mois, semaine[calendar.SUNDAY]))
                 
-        # Récupération dynamique des rôles créés par l'église
         roles_eglise = db.query(models.Role).filter(models.Role.eglise_id == current_eglise.id).order_by(models.Role.ordre.asc(), models.Role.id.asc()).all()
         
         matrice = {}
@@ -754,7 +756,6 @@ async def export_planning_pdf(annee: int, mois: int, db: Session = Depends(get_d
             
         pdf.set_xy(x_start, y_start + row_height)
         
-    # Récupération sécurisée du PDF (gestion de l'encodage selon la version de FPDF)
     pdf_out = pdf.output(dest='S')
     pdf_bytes = pdf_out.encode('latin-1') if isinstance(pdf_out, str) else bytes(pdf_out)
     
@@ -790,7 +791,6 @@ async def export_planning_excel(annee: int, mois: int, db: Session = Depends(get
             matrice[planning.role.nom][planning.date].append(nom_complet)
 
     output = io.StringIO()
-    # On utilise le point-virgule, c'est le standard pour que les Excel francophones séparent bien les colonnes
     writer = csv.writer(output, delimiter=';') 
     
     en_tete = ["Activite / Role"] + [d.strftime('%d/%m/%Y') for d in dimanches]
@@ -804,7 +804,6 @@ async def export_planning_excel(annee: int, mois: int, db: Session = Depends(get
         writer.writerow(ligne)
         
     nom_fichier = f"planning_{current_eglise.nom_eglise.replace(' ', '_').lower()}_{str(mois).zfill(2)}_{annee}.csv"
-    # utf-8-sig est très important : il force Excel à comprendre les accents correctement (é, à, etc.)
     csv_bytes = output.getvalue().encode('utf-8-sig') 
     
     return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'})
