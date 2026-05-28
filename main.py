@@ -171,9 +171,6 @@ def post_login(
     if not eglise or not pwd_context.verify(mot_de_passe, eglise.mot_de_passe_hash):
         return templates.TemplateResponse(request=request, name="login.html", context={"erreur": "Email ou mot de passe incorrect"})
     
-    if not eglise.is_verified:
-        return templates.TemplateResponse(request=request, name="login.html", context={"erreur": "Veuillez vérifier votre adresse email avec le code reçu avant de vous connecter."})
-
     # Connexion réussie
     request.session["eglise_id"] = eglise.id
     return RedirectResponse(url="/", status_code=303)
@@ -196,22 +193,14 @@ async def post_register(
 
     existant = db.query(models.Eglise).filter(models.Eglise.email == email).first()
     if existant:
-        if existant.is_verified:
-            return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Cet email est déjà utilisé."})
-        else:
-            existant.nom_eglise = nom_eglise
-            existant.mot_de_passe_hash = pwd_context.hash(mot_de_passe)
-            existant.verification_code = str(random.randint(100000, 999999))
-            db.commit()
-            await envoyer_email_verification(email, existant.verification_code)
-            return RedirectResponse(url=f"/verifier_email?email={email}", status_code=303)
+        return templates.TemplateResponse(request=request, name="register.html", context={"erreur": "Cet email est déjà utilisé."})
     
     nouvelle_eglise = models.Eglise(
         nom_eglise=nom_eglise,
         email=email,
         mot_de_passe_hash=pwd_context.hash(mot_de_passe),
-        is_verified=False,
-        verification_code=str(random.randint(100000, 999999))
+        is_verified=True,
+        verification_code=None
     )
     db.add(nouvelle_eglise)
     db.commit()
@@ -231,9 +220,7 @@ async def post_register(
         
     db.commit()
 
-    # Appel de la fonction asynchrone (le site change de page sans attendre la fin du SMTP)
-    await envoyer_email_verification(email, nouvelle_eglise.verification_code)
-    return RedirectResponse(url=f"/verifier_email?email={email}", status_code=303)
+    return templates.TemplateResponse(request=request, name="login.html", context={"succes": "Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter !"})
 
 @app.get("/verifier_email", response_class=HTMLResponse)
 def get_verifier_email(request: Request, email: str):
@@ -309,6 +296,41 @@ def post_reinitialiser_mot_de_passe(
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request, current_eglise: models.Eglise = Depends(get_current_eglise)):
     return templates.TemplateResponse(request=request, name="home.html", context={"current_eglise": current_eglise})
+
+# --- GESTION DU PROFIL ---
+@app.get("/profil", response_class=HTMLResponse)
+def get_profil(request: Request, current_eglise: models.Eglise = Depends(get_current_eglise)):
+    return templates.TemplateResponse(request=request, name="profil.html", context={"current_eglise": current_eglise})
+
+@app.post("/profil/modifier", response_class=HTMLResponse)
+def post_modifier_profil(
+    request: Request,
+    nom_eglise: str = Form(...),
+    db: Session = Depends(get_db),
+    current_eglise: models.Eglise = Depends(get_current_eglise)
+):
+    current_eglise.nom_eglise = nom_eglise
+    db.commit()
+    return templates.TemplateResponse(request=request, name="profil.html", context={"current_eglise": current_eglise, "succes": "Le nom de l'église a été mis à jour avec succès."})
+
+@app.post("/profil/mot-de-passe", response_class=HTMLResponse)
+def post_modifier_mot_de_passe(
+    request: Request,
+    mot_de_passe_actuel: str = Form(...),
+    nouveau_mot_de_passe: str = Form(...),
+    confirmation_mot_de_passe: str = Form(...),
+    db: Session = Depends(get_db),
+    current_eglise: models.Eglise = Depends(get_current_eglise)
+):
+    if not pwd_context.verify(mot_de_passe_actuel, current_eglise.mot_de_passe_hash):
+        return templates.TemplateResponse(request=request, name="profil.html", context={"current_eglise": current_eglise, "erreur": "Le mot de passe actuel est incorrect."})
+        
+    if nouveau_mot_de_passe != confirmation_mot_de_passe:
+        return templates.TemplateResponse(request=request, name="profil.html", context={"current_eglise": current_eglise, "erreur": "Les nouveaux mots de passe ne correspondent pas."})
+        
+    current_eglise.mot_de_passe_hash = pwd_context.hash(nouveau_mot_de_passe)
+    db.commit()
+    return templates.TemplateResponse(request=request, name="profil.html", context={"current_eglise": current_eglise, "succes": "Votre mot de passe a été mis à jour avec succès."})
 
 # --- GESTION DYNAMIQUES DES RÔLES ---
 @app.get("/roles", response_class=HTMLResponse)
