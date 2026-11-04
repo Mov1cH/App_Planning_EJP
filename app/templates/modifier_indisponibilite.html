@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Modifier une indisponibilité{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+{% endblock %}
+{% block content %}
+<a class="back-link" href="/indisponibilites">{{ icon('arrow-left', 'i-sm') }} Indisponibilités</a>
+<div class="page-head"><div><h1>Modifier l'indisponibilité</h1></div></div>
+<form class="card" action="/indisponibilites/{{ indispo.id }}/modifier" method="post" style="max-width:560px">
+  <div class="card-body">
+    <div class="field">
+      <label class="label" for="membre_id">Membre</label>
+      <select class="select" id="membre_id" name="membre_id" required>
+        {% for m in membres %}<option value="{{ m.id }}" {{ 'selected' if m.id == indispo.membre_id }}>{{ nom_complet(m) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label" for="date_indispo">Date</label>
+      <input class="input" id="date_indispo" name="date_indispo" value="{{ indispo.date.isoformat() }}" required>
+    </div>
+    <div class="field">
+      <label class="label" for="role_id">Activité concernée</label>
+      <select class="select" id="role_id" name="role_id">
+        <option value="">Toutes les activités</option>
+        {% for r in roles %}<option value="{{ r.id }}" {{ 'selected' if r.id == indispo.role_id }}>{{ r.nom }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="hero-foot" style="justify-content:flex-end">
+    <a class="btn btn-ghost" href="/indisponibilites">Annuler</a>
+    <button class="btn btn-primary" type="submit" data-loading>{{ icon('check') }} Enregistrer</button>
+  </div>
+</form>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/fr.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (window.flatpickr) flatpickr("#date_indispo", { dateFormat: "Y-m-d", altInput: true, altFormat: "l j F Y", locale: "fr", disableMobile: true });
+  });
+</script>
+{% endblock %}

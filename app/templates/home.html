@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Coordination</span>
+    <h1>Tableau de bord</h1>
+    <p>Voici ce qui se prépare pour {{ current_eglise.nom_eglise }}.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/indisponibilites">{{ icon('calendar-x') }} Ajouter une indispo</a>
+    <a class="btn btn-primary" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">{{ icon('calendar') }} Ouvrir le planning</a>
+  </div>
+</div>
+
+<div class="stats">
+  <a class="stat" href="/membres">
+    <span class="stat-label">{{ icon('users', 'i-sm') }} Membres</span>
+    <div class="stat-value">{{ stats.membres }}</div>
+  </a>
+  <a class="stat" href="/roles">
+    <span class="stat-label">{{ icon('roles', 'i-sm') }} Rôles</span>
+    <div class="stat-value">{{ stats.roles }}</div>
+  </a>
+  <a class="stat" href="/indisponibilites">
+    <span class="stat-label">{{ icon('calendar-x', 'i-sm') }} Indispos à venir</span>
+    <div class="stat-value">{{ stats.indispos }}</div>
+  </a>
+  <a class="stat" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}">
+    <span class="stat-label">{{ icon('check-circle', 'i-sm') }} {{ MOIS_FR[planning.mois] }} couvert</span>
+    <div class="stat-value">{% if planning.est_vide %}—{% else %}{{ planning.taux_couverture }} %{% endif %}</div>
+    {% if not planning.est_vide %}
+    <div class="meter{% if planning.taux_couverture < 100 %} is-warn{% endif %}" role="img" aria-label="{{ planning.taux_couverture }} % des places pourvues"><span style="width: {{ planning.taux_couverture }}%"></span></div>
+    {% endif %}
+  </a>
+</div>
+
+<div class="grid grid-dash">
+  <section class="card hero" aria-labelledby="prochain-titre">
+    <div class="hero-head">
+      <div>
+        <span class="eyebrow">{{ icon('flame', 'i-sm') }} Prochain culte</span>
+        <h2 id="prochain-titre">{{ dimanche|date_fr }}</h2>
+      </div>
+    </div>
+    {% if planning.est_vide or not equipe %}
+      <div class="empty">
+        {{ icon('sparkles') }}
+        <h3>Le planning de {{ MOIS_FR[dimanche.month]|lower }} n'est pas encore prêt</h3>
+        <p>Générez-le automatiquement : les indisponibilités et l'équité entre membres sont prises en compte.</p>
+        {% if stats.membres %}
+        <form action="/generer_planning" method="post">
+          <input type="hidden" name="annee" value="{{ dimanche.year }}">
+          <input type="hidden" name="mois" value="{{ dimanche.month }}">
+          <button class="btn btn-accent" type="submit" data-loading>{{ icon('sparkles') }} Générer {{ MOIS_FR[dimanche.month]|lower }}</button>
+        </form>
+        {% else %}
+        <a class="btn btn-primary" href="/membres">{{ icon('plus') }} Ajouter des membres</a>
+        {% endif %}
+      </div>
+    {% else %}
+      <ul class="team">
+        {% for role, cell in equipe %}
+        <li>
+          <span class="role">{{ role.nom }}</span>
+          <span class="who">
+            {% if cell.noms %}{{ cell.noms|join(', ') }}{% endif %}
+            {% if cell.manque %}<span class="slot-missing">{{ icon('alert', 'i-sm') }} {{ cell.manque }} à pourvoir</span>{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="hero-foot">
+        <a class="btn btn-sm" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">Voir tout le mois {{ icon('arrow-right', 'i-sm') }}</a>
+        <a class="btn btn-sm btn-ghost" href="/planning/exporter/pdf?annee={{ dimanche.year }}&mois={{ dimanche.month }}">{{ icon('download', 'i-sm') }} PDF</a>
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="indispo-titre">
+      <div class="card-head">
+        <h2 id="indispo-titre">Absences à venir</h2>
+        <a class="btn btn-sm btn-ghost" href="/indisponibilites">Tout voir</a>
+      </div>
+      {% if indispos %}
+      <ul class="list">
+        {% for i in indispos %}
+        <li class="list-item">
+          <div class="date-tile"><div class="m">{{ MOIS_COURTS[i.date.month] }}</div><div class="d">{{ i.date.day }}</div></div>
+          <div class="grow">
+            <div class="title">{{ nom_complet(i.membre) if i.membre else '—' }}</div>
+            <div class="meta"><span class="badge">{{ i.role.nom if i.role else 'Toutes activités' }}</span></div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty" style="padding:32px 20px">
+        <p style="margin-bottom:0">Aucune absence signalée pour les 30 prochains jours.</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="dept-titre">
+      <h2 id="dept-titre" class="sr-only">Départements</h2>
+      <a class="dept" href="/generateur">
+        <span class="dept-icon">{{ icon('calendar') }}</span>
+        <span class="grow"><strong>Coordination</strong><br><span class="muted small">Membres, indisponibilités et planning des cultes</span></span>
+        {{ icon('chevron-right') }}
+      </a>
+      <div class="dept is-soon" aria-disabled="true">
+        <span class="dept-icon">{{ icon('camera') }}</span>
+        <span class="grow"><strong>Photo & Médias</strong><br><span class="muted small">Planning de l'équipe photo</span></span>
+        <span class="badge badge-accent">Bientôt</span>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

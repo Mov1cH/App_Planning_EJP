@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  {% include "_head.html" %}
+  <title>{% block title %}Connexion{% endblock %} · Planning EJP</title>
+</head>
+<body>
+{% include "_icons.html" %}
+<div class="auth">
+  <aside class="auth-aside">
+    <img class="logo-white" src="/static/logo.png" alt="Église Jeunes Prodiges">
+    <div>
+      <h1>Chaque dimanche, <em>la bonne équipe</em> au bon poste.</h1>
+      <p>Organisez les services du culte en quelques minutes : membres, disponibilités et planning mensuel généré automatiquement.</p>
+      <ul class="auth-points">
+        <li>{{ icon('sparkles') }} Planning équitable généré en un clic</li>
+        <li>{{ icon('calendar-x') }} Indisponibilités respectées</li>
+        <li>{{ icon('download') }} Export PDF et Excel à partager</li>
+      </ul>
+    </div>
+    <p class="small">Planning EJP · Coordination des cultes</p>
+    <div class="flame" aria-hidden="true"></div>
+  </aside>
+  <main class="auth-main">
+    <div class="auth-card">
+      <img class="auth-mobile-logo logo-img" src="/static/logo.png" alt="Église Jeunes Prodiges">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+<script src="/static/js/app.js?v=3" defer></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Déploiement « Blueprint » Render : https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: planning-ejp
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: sh start.sh
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: ENV
+        value: production
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false   # URL Postgres (Supabase, Neon…) à coller dans le tableau de bord
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ALLOW_REGISTRATION
+        value: "true"
+      - key: EMAIL_ADDRESS
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

@@ -1,0 +1,11 @@
+{# Paramètres : roles, nom_champ, coches (liste d'ids), prefixe #}
+<div class="chips">
+  {% for role in roles %}
+  <label class="chip-check">
+    <input type="checkbox" name="{{ nom_champ }}" value="{{ role.id }}" {{ 'checked' if role.id in coches }}>
+    <span>{{ icon('check', 'i-sm') }}{{ role.nom }}</span>
+  </label>
+  {% else %}
+  <p class="hint">Aucun rôle. <a href="/roles">Créez-en un</a> d'abord.</p>
+  {% endfor %}
+</div>

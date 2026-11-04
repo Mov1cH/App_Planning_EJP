@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ role.nom }} · {{ planning_date|date_fr('court') }}{% endblock %}
+{% block content %}
+<a class="back-link" href="/generateur?annee={{ planning_date.year }}&mois={{ planning_date.month }}">{{ icon('arrow-left', 'i-sm') }} Planning de {{ MOIS_FR[planning_date.month]|lower }}</a>
+<div class="page-head">
+  <div>
+    <span class="eyebrow">{{ planning_date|date_fr }}</span>
+    <h1>{{ role.nom }}</h1>
+    <p>Sélectionnez {{ role.quota }} personne{{ 's' if role.quota > 1 }}. Les membres disponibles et ayant le moins servi ce mois apparaissent en premier.</p>
+  </div>
+</div>
+
+<form action="/planning/modifier" method="post" class="card" style="max-width:720px">
+  <input type="hidden" name="date_str" value="{{ planning_date.isoformat() }}">
+  <input type="hidden" name="role_id" value="{{ role.id }}">
+  <div class="card-head">
+    <h2>Membres pour ce rôle</h2>
+    <span class="badge" data-pick-count data-quota="{{ role.quota }}" aria-live="polite">{{ membres_assignes_ids|length }} / {{ role.quota }}</span>
+  </div>
+  <div class="card-body">
+    {% if membres_eligibles %}
+    <fieldset style="border:0;margin:0;padding:0">
+      <legend class="sr-only">Membres pouvant tenir le rôle {{ role.nom }}</legend>
+      <div class="pick-list">
+        {% for m in membres_eligibles %}
+        {% set indispo = m.id in indisponibles %}
+        {% set ailleurs = autres_roles.get(m.id) %}
+        <label class="pick{{ ' is-unavailable' if indispo }}">
+          <input type="checkbox" name="membres_ids" value="{{ m.id }}" {{ 'checked' if m.id in membres_assignes_ids }}>
+          <span class="avatar" aria-hidden="true">{{ (m.prenom or m.nom)[:1] }}{{ m.nom[:1] if m.prenom else '' }}</span>
+          <span class="pick-body">
+            <span class="pick-name">{{ nom_complet(m) }}</span>
+            <span class="pick-meta">
+              {% if indispo %}<span class="badge badge-danger">{{ icon('calendar-x', 'i-sm') }} Indisponible</span>{% endif %}
+              {% if ailleurs %}<span class="badge badge-warning">Déjà : {{ ailleurs|join(', ') }}</span>{% endif %}
+              <span class="badge">{{ compteur.get(m.id, 0) }} service{{ 's' if compteur.get(m.id, 0) > 1 }} ce mois</span>
+            </span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% else %}
+    <div class="empty">
+      {{ icon('users') }}
+      <h3>Personne n'a ce rôle</h3>
+      <p>Attribuez le rôle « {{ role.nom }} » à des membres depuis la page Membres.</p>
+      <a class="btn" href="/membres">Gérer les membres</a>
+    </div>
+    {% endif %}
+  </div>
+  <div class="hero-foot" style="justify-content:flex-end">
+    <a class="btn btn-ghost" href="/generateur?annee={{ planning_date.year }}&mois={{ planning_date.month }}">Annuler</a>
+    <button type="submit" class="btn btn-primary" data-loading>{{ icon('check') }} Enregistrer</button>
+  </div>
+</form>
+{% endblock %}

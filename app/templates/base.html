@@ -1,0 +1,98 @@
+{%- set path = request.url.path -%}
+{%- macro nav_current(prefix, exact=False) -%}
+  {%- if (exact and path == prefix) or (not exact and path.startswith(prefix)) %} aria-current="page"{% endif -%}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  {% include "_head.html" %}
+  <title>{% block title %}Planning{% endblock %} · Planning EJP</title>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% include "_icons.html" %}
+<a class="skip-link" href="#contenu">Aller au contenu</a>
+
+<div class="app">
+  <aside class="sidebar" aria-label="Navigation principale">
+    <a class="brand" href="/">
+      <img class="logo-img" src="/static/logo-mark.png" alt="" width="28" height="40">
+      <span class="brand-text">
+        <span class="brand-title">Planning</span>
+        <span class="brand-sub">{{ current_eglise.nom_eglise if current_eglise else "EJP" }}</span>
+      </span>
+    </a>
+    <nav class="nav">
+      <a class="nav-link" href="/"{{ nav_current('/', True) }}>{{ icon('home') }} Tableau de bord</a>
+      <a class="nav-link" href="/generateur"{{ nav_current('/generateur') }}{{ nav_current('/planning') }}>{{ icon('calendar') }} Planning</a>
+      <span class="nav-label">Coordination</span>
+      <a class="nav-link" href="/membres"{{ nav_current('/membres') }}>{{ icon('users') }} Membres</a>
+      <a class="nav-link" href="/roles"{{ nav_current('/roles') }}>{{ icon('roles') }} Rôles</a>
+      <a class="nav-link" href="/indisponibilites"{{ nav_current('/indisponibilites') }}>{{ icon('calendar-x') }} Indisponibilités</a>
+    </nav>
+    <div class="sidebar-foot">
+      <a class="nav-link" href="/profil"{{ nav_current('/profil') }}>{{ icon('user') }} Mon compte</a>
+      <a class="nav-link" href="/logout">{{ icon('logout') }} Déconnexion</a>
+    </div>
+  </aside>
+
+  <header class="topbar">
+    <a class="brand" href="/">
+      <img class="logo-img" src="/static/logo-mark.png" alt="" width="22" height="32">
+      <span class="brand-text">
+        <span class="brand-title">Planning</span>
+        <span class="brand-sub">{{ current_eglise.nom_eglise if current_eglise else "EJP" }}</span>
+      </span>
+    </a>
+    <div class="actions">
+      <a class="icon-btn" href="/profil" aria-label="Mon compte">{{ icon('user') }}</a>
+      <a class="icon-btn" href="/logout" aria-label="Déconnexion">{{ icon('logout') }}</a>
+    </div>
+  </header>
+
+  <main class="main" id="contenu">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="bottombar" aria-label="Navigation principale">
+    <a class="tab" href="/"{{ nav_current('/', True) }}>{{ icon('home') }}<span>Accueil</span></a>
+    <a class="tab" href="/generateur"{{ nav_current('/generateur') }}{{ nav_current('/planning') }}>{{ icon('calendar') }}<span>Planning</span></a>
+    <a class="tab" href="/membres"{{ nav_current('/membres') }}>{{ icon('users') }}<span>Membres</span></a>
+    <a class="tab" href="/indisponibilites"{{ nav_current('/indisponibilites') }}>{{ icon('calendar-x') }}<span>Indispos</span></a>
+    <a class="tab" href="/roles"{{ nav_current('/roles') }}>{{ icon('roles') }}<span>Rôles</span></a>
+  </nav>
+</div>
+
+{% set flashes = get_flashes(request) %}
+{% if flashes %}
+<div class="toasts" role="status" aria-live="polite">
+  {% for categorie, message in flashes %}
+  <div class="toast toast-{{ categorie }}">
+    {{ icon('check-circle' if categorie == 'succes' else 'alert') }}
+    <p>{{ message }}</p>
+    <button type="button" aria-label="Fermer">{{ icon('x', 'i-sm') }}</button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<dialog class="dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <div class="dialog-body">
+      <div class="dialog-icon">{{ icon('alert') }}</div>
+      <div>
+        <h2 id="confirm-title" data-confirm-title>Confirmer</h2>
+        <p data-confirm-text></p>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-ghost" value="cancel">Annuler</button>
+      <button class="btn btn-danger" value="ok" data-confirm-button>Supprimer</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/js/app.js?v=3" defer></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

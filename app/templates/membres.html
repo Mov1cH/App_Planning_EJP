@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Membres{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Coordination</span>
+    <h1>Membres</h1>
+    <p>Les personnes qui servent pendant le culte, et les rôles que chacune peut tenir.</p>
+  </div>
+</div>
+
+<div class="grid grid-aside">
+  <section class="card sticky" aria-labelledby="ajout-titre">
+    <div class="card-head"><h2 id="ajout-titre">Ajouter un membre</h2></div>
+    <form class="card-body" action="/membres" method="post">
+      <div class="row">
+        <div class="field">
+          <label class="label" for="prenom">Prénom</label>
+          <input class="input" id="prenom" name="prenom" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="label" for="nom">Nom <span class="muted">*</span></label>
+          <input class="input" id="nom" name="nom" required autocomplete="off">
+        </div>
+      </div>
+      <fieldset class="field" style="border:0;padding:0;margin:0 0 20px">
+        <legend class="label" style="margin-bottom:8px">Rôles possibles</legend>
+        {% with nom_champ='roles', coches=[] %}{% include "_role_chips.html" %}{% endwith %}
+      </fieldset>
+      <button class="btn btn-primary btn-block" type="submit" data-loading>{{ icon('plus') }} Ajouter</button>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="liste-titre" data-filter-list>
+    <div class="card-head">
+      <h2 id="liste-titre">Équipe <span class="badge badge-ink" data-filter-count>{{ membres|length }}</span></h2>
+    </div>
+    {% if membres %}
+    <div class="toolbar">
+      <label class="input-icon">
+        <span class="sr-only">Rechercher un membre</span>
+        {{ icon('search') }}
+        <input class="input" type="search" placeholder="Rechercher un membre…" data-filter-input>
+      </label>
+      {% if roles %}
+      <div class="filter-chips" role="group" aria-label="Filtrer par rôle">
+        <button type="button" class="filter-chip" data-filter-chip="" aria-pressed="true">Tous</button>
+        {% for r in roles %}<button type="button" class="filter-chip" data-filter-chip="{{ r.id }}" aria-pressed="false">{{ r.nom }}</button>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <ul class="list">
+      {% for membre in membres %}
+      <li class="list-item" data-filter-item data-roles="{{ membre.roles|map(attribute='id')|join(',') }}">
+        <span class="avatar" aria-hidden="true">{{ (membre.prenom or membre.nom)[:1] }}{{ membre.nom[:1] if membre.prenom else '' }}</span>
+        <div class="grow">
+          <div class="title">{{ nom_complet(membre) }}</div>
+          <div class="meta">
+            {% for role in membre.roles %}<span class="badge">{{ role.nom }}</span>{% else %}<span class="badge badge-warning">Aucun rôle</span>{% endfor %}
+          </div>
+        </div>
+        <span class="muted small nowrap hide-sm" title="Services en {{ mois_courant }}">{{ services_mois.get(membre.id, 0) }} en {{ mois_courant }}</span>
+        <a class="icon-btn" href="/membres/{{ membre.id }}/modifier" aria-label="Modifier {{ nom_complet(membre) }}">{{ icon('pencil') }}</a>
+        <form action="/membres/{{ membre.id }}/supprimer" method="post"
+              data-confirm="{{ nom_complet(membre) }} sera retiré(e) ainsi que ses indisponibilités et affectations." data-confirm-title="Supprimer ce membre ?">
+          <button class="icon-btn danger" type="submit" aria-label="Supprimer {{ nom_complet(membre) }}">{{ icon('trash') }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="empty" data-filter-empty hidden><p style="margin:0">Aucun membre ne correspond à cette recherche.</p></div>
+    {% else %}
+    <div class="empty">
+      {{ icon('users') }}
+      <h3>Aucun membre pour l'instant</h3>
+      <p>Ajoutez les personnes qui servent pendant le culte avec le formulaire.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

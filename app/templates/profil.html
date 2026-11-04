@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Mon compte{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Paramètres</span>
+    <h1>Mon compte</h1>
+  </div>
+</div>
+
+<div class="grid grid-2" style="max-width:1000px">
+  <section class="card" aria-labelledby="eglise-titre">
+    <div class="card-head"><h2 id="eglise-titre">Église</h2></div>
+    <form class="card-body" action="/profil/modifier" method="post">
+      <div class="field">
+        <label class="label" for="email">Email de connexion</label>
+        <input class="input" type="email" id="email" value="{{ current_eglise.email }}" readonly>
+      </div>
+      <div class="field">
+        <label class="label" for="nom_eglise">Nom de l'église</label>
+        <input class="input" id="nom_eglise" name="nom_eglise" value="{{ current_eglise.nom_eglise }}" required>
+        <span class="hint">Affiché dans l'application et sur les exports PDF.</span>
+      </div>
+      <button class="btn btn-primary" type="submit" data-loading>Enregistrer</button>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="mdp-titre">
+    <div class="card-head"><h2 id="mdp-titre">Mot de passe</h2></div>
+    <form class="card-body" action="/profil/mot-de-passe" method="post">
+      <div class="field">
+        <label class="label" for="mot_de_passe_actuel">Mot de passe actuel</label>
+        <input class="input" type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" autocomplete="current-password" required>
+      </div>
+      <div class="field">
+        <label class="label" for="nouveau_mot_de_passe">Nouveau mot de passe</label>
+        <input class="input" type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" autocomplete="new-password" minlength="8" required>
+        <span class="hint">8 caractères minimum.</span>
+      </div>
+      <div class="field">
+        <label class="label" for="confirmation_mot_de_passe">Confirmer</label>
+        <input class="input" type="password" id="confirmation_mot_de_passe" name="confirmation_mot_de_passe" autocomplete="new-password" minlength="8" required>
+      </div>
+      <button class="btn btn-primary" type="submit" data-loading>Changer le mot de passe</button>
+    </form>
+  </section>
+</div>
+
+<a class="btn btn-ghost" href="/logout" style="margin-top:20px">{{ icon('logout') }} Se déconnecter</a>
+{% endblock %}

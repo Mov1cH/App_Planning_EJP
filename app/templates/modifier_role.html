@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Modifier {{ role.nom }}{% endblock %}
+{% block content %}
+<a class="back-link" href="/roles">{{ icon('arrow-left', 'i-sm') }} Rôles</a>
+<div class="page-head"><div><h1>{{ role.nom }}</h1></div></div>
+<form class="card" action="/roles/{{ role.id }}/modifier" method="post" style="max-width:560px">
+  <div class="card-body">
+    <div class="field">
+      <label class="label" for="nom">Nom du rôle</label>
+      <input class="input" id="nom" name="nom" value="{{ role.nom }}" required>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label class="label" for="quota">Personnes nécessaires</label>
+        <input class="input" type="number" id="quota" name="quota" value="{{ role.quota }}" min="1" max="50" inputmode="numeric" required>
+      </div>
+      <div class="field">
+        <label class="label" for="ordre">Position</label>
+        <input class="input" type="number" id="ordre" name="ordre" value="{{ role.ordre }}" inputmode="numeric" required>
+        <span class="hint">Plus petit = affiché en premier.</span>
+      </div>
+    </div>
+  </div>
+  <div class="hero-foot" style="justify-content:flex-end">
+    <a class="btn btn-ghost" href="/roles">Annuler</a>
+    <button class="btn btn-primary" type="submit" data-loading>{{ icon('check') }} Enregistrer</button>
+  </div>
+</form>
+{% endblock %}

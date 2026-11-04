@@ -1,0 +1,14 @@
+# Environnements Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets et données locales
+.env
+*.db
+*.sqlite3
+
+# Divers
+.DS_Store
+*.tgz

@@ -1,0 +1,31 @@
+{% extends "auth_base.html" %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<h2>Connexion</h2>
+<p class="lead">Accédez à l'espace de votre église.</p>
+
+{% if erreur %}<div class="alert alert-erreur" role="alert">{{ icon('alert') }}<span>{{ erreur }}</span></div>{% endif %}
+{% if succes %}<div class="alert alert-succes" role="status">{{ icon('check-circle') }}<span>{{ succes }}</span></div>{% endif %}
+
+<form action="/login" method="post" novalidate>
+  <div class="field">
+    <label class="label" for="email">Adresse email</label>
+    <div class="input-icon">{{ icon('mail') }}
+      <input class="input" type="email" id="email" name="email" value="{{ email or '' }}" autocomplete="email" inputmode="email" required autofocus>
+    </div>
+  </div>
+  <div class="field">
+    <label class="label" for="mot_de_passe">Mot de passe</label>
+    <div class="pw-wrap">
+      <input class="input" type="password" id="mot_de_passe" name="mot_de_passe" autocomplete="current-password" required>
+      <button type="button" class="icon-btn pw-toggle" data-toggle-password="mot_de_passe" aria-label="Afficher le mot de passe" aria-pressed="false">{{ icon('eye') }}</button>
+    </div>
+  </div>
+  <div class="link-row"><a href="/mot-de-passe-oublie">Mot de passe oublié ?</a></div>
+  <button type="submit" class="btn btn-primary btn-block" data-loading>Se connecter</button>
+</form>
+
+{% if ALLOW_REGISTRATION %}
+<p class="auth-links">Pas encore de compte ? <a href="/register">Inscrire mon église</a></p>
+{% endif %}
+{% endblock %}
