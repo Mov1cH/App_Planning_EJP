@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import config, jourj, models, services, stats
+from app import config, jourj, models, services, sheets_sync, stats
 from app.database import SessionLocal, engine, get_db
 from app.emails import envoyer_code_verification, envoyer_email_reinitialisation
 from app.exports import nom_fichier, planning_csv, planning_pdf, stats_pdf
@@ -1415,6 +1415,21 @@ def get_stats(request: Request, type: Optional[str] = None, annee: Optional[int]
                   dernier=_dernier_dimanche(), recents=[r[0] for r in recents])
 
 
+@app.post("/stats/sheet/synchroniser")
+def post_synchroniser_sheet(request: Request, db: Session = Depends(get_db),
+                            eglise: models.Eglise = Depends(get_current_eglise)):
+    client = sheets_sync.client_depuis_env()
+    if client is None:
+        flash(request, "Synchronisation Google Sheet non configurée.", "attention")
+        return redirect("/stats")
+    r = sheets_sync.synchroniser_plage(db, client, eglise.id)
+    message = f"{len(r.ok)} culte(s) écrit(s), {len(r.deja_rempli)} déjà rempli(s) dans le Sheet"
+    if r.erreurs:
+        message += f", {len(r.erreurs)} erreur(s)"
+    flash(request, message + ".", "attention" if r.erreurs else "succes")
+    return redirect("/stats")
+
+
 @app.get("/stats/culte", response_class=HTMLResponse)
 def get_pointage(request: Request, date_str: Optional[str] = None, db: Session = Depends(get_db),
                  eglise: models.Eglise = Depends(get_current_eglise)):
@@ -1455,6 +1470,9 @@ async def post_pointage(request: Request, db: Session = Depends(get_db), eglise:
     culte = stats.enregistrer_culte(db, eglise.id, jour, _entier(form.get("hommes")), _entier(form.get("femmes")), lignes,
                                      _entier(form.get("ados")), _entier(form.get("enfants")))
     flash(request, f"Culte du {_format_date(jour, 'jour')} {jour.year} enregistré : {len(culte.services)} service(s).")
+    resultat = sheets_sync.synchroniser_culte(db, sheets_sync.client_depuis_env(), culte)
+    if resultat.statut == "erreur":
+        flash(request, "Enregistré. Le Google Sheet n'a pas pu être mis à jour, réessayez depuis Stats.", "attention")
     return redirect(f"/stats?type=mois&annee={jour.year}&n={jour.month}")
 
 

@@ -105,6 +105,18 @@ class Deroule(Base):
     updated_at = Column(DateTime)
 
 
+class SheetSync(Base):
+    """Empreinte de ce que le site a écrit dans le Google Sheet, pour ne jamais écraser une saisie manuelle."""
+    __tablename__ = "sheet_sync"
+
+    id = Column(Integer, primary_key=True, index=True)
+    culte_id = Column(Integer, ForeignKey("cultes.id"), unique=True, index=True)
+    empreinte = Column(String)
+    ecrit_le = Column(DateTime)
+    statut = Column(String)  # "ok" | "deja_rempli" | "erreur"
+    message = Column(String, nullable=True)
+
+
 class DerouleLive(Base):
     """État du direct (mode jour J) d'un déroulé — partagé par tous les écrans."""
     __tablename__ = "deroules_live"
