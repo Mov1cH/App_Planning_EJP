@@ -1,126 +1,99 @@
 {% extends "base.html" %}
 {% block title %}Planning {{ MOIS_FR[planning.mois] }} {{ planning.annee }}{% endblock %}
+{% block page_class %}paper{% endblock %}
 {% block content %}
 {% set a, m = planning.annee, planning.mois %}
+{% set vue = proposition or planning %}
 <div class="page-head">
-  <div>
-    <span class="eyebrow">Planning des cultes</span>
-    <h1>{{ MOIS_FR[m] }} {{ a }}</h1>
-    <p>Cliquez sur une case pour modifier l'affectation. Le planning généré respecte les indisponibilités et répartit les services équitablement.</p>
+  <h1 class="page-title">{{ MOIS_FR[m] }} <span class="year year-acc">{{ a }}</span></h1>
+  <div class="actions">
+    <a class="btn btn-icon" href="/generateur?annee={{ precedent[0] }}&mois={{ precedent[1] }}" aria-label="Mois précédent">{{ icon('chevron-left') }}</a>
+    <a class="btn btn-icon" href="/generateur?annee={{ suivant[0] }}&mois={{ suivant[1] }}" aria-label="Mois suivant">{{ icon('chevron-right') }}</a>
+    {% if not planning.est_vide and not proposition %}
+    <a class="btn" href="/planning/exporter/pdf?annee={{ a }}&mois={{ m }}">{{ icon('download') }} PDF</a>
+    <a class="btn hide-sm" href="/planning/exporter/excel?annee={{ a }}&mois={{ m }}">Excel</a>
+    {% endif %}
+    {% if not proposition %}
+    <form action="/generer_planning" method="post">
+      <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+      <button class="btn btn-acc" type="submit" data-loading>{{ icon('sparkles') }} {{ 'Régénérer' if not planning.est_vide else 'Générer' }}</button>
+    </form>
+    {% endif %}
   </div>
-  <nav class="month-nav" aria-label="Changer de mois">
-    <a class="icon-btn" href="/generateur?annee={{ precedent[0] }}&mois={{ precedent[1] }}" aria-label="Mois précédent ({{ MOIS_FR[precedent[1]] }})">{{ icon('chevron-left') }}</a>
-    <span class="current">{{ MOIS_FR[m] }} {{ a }}</span>
-    <a class="icon-btn" href="/generateur?annee={{ suivant[0] }}&mois={{ suivant[1] }}" aria-label="Mois suivant ({{ MOIS_FR[suivant[1]] }})">{{ icon('chevron-right') }}</a>
-  </nav>
 </div>
 
-<div class="actions" style="margin-bottom:20px">
-  <form action="/generer_planning" method="post"
-        {% if not planning.est_vide %}data-confirm="Les affectations actuelles de {{ MOIS_FR[m]|lower }} seront remplacées par un nouveau planning." data-confirm-title="Régénérer le planning ?" data-confirm-ok="Régénérer"{% endif %}>
-    <input type="hidden" name="annee" value="{{ a }}">
-    <input type="hidden" name="mois" value="{{ m }}">
-    <button type="submit" class="btn {{ 'btn' if not planning.est_vide else 'btn-accent' }}" data-loading>
-      {{ icon('sparkles') }} {{ 'Régénérer' if not planning.est_vide else 'Générer le planning' }}
-    </button>
-  </form>
-  {% if not planning.est_vide %}
-  <a class="btn btn-primary" href="/planning/exporter/pdf?annee={{ a }}&mois={{ m }}">{{ icon('file') }} PDF</a>
-  <a class="btn" href="/planning/exporter/excel?annee={{ a }}&mois={{ m }}">{{ icon('sheet') }} Excel</a>
-  <button type="button" class="btn btn-ghost" onclick="window.print()">{{ icon('printer') }} Imprimer</button>
-  <form action="/planning/reinitialiser" method="post" style="margin-left:auto"
-        data-confirm="Toutes les affectations de {{ MOIS_FR[m]|lower }} {{ a }} seront supprimées. Les autres mois ne sont pas touchés."
-        data-confirm-title="Vider ce mois ?" data-confirm-ok="Vider le mois">
-    <input type="hidden" name="annee" value="{{ a }}">
-    <input type="hidden" name="mois" value="{{ m }}">
-    <button type="submit" class="btn btn-danger">{{ icon('trash') }} Vider le mois</button>
-  </form>
-  {% endif %}
+{% if not planning.lignes %}
+<div class="weeks-empty">
+  <h2>Aucun rôle pour l'instant</h2>
+  <p>Créez d'abord les rôles du culte, par exemple la modération ou la prédication, puis revenez générer le planning.</p>
+  <a class="btn btn-dark" href="/roles">Créer les rôles</a>
 </div>
-
-<section class="card" aria-label="Planning de {{ MOIS_FR[m] }}">
-  {% if not planning.lignes %}
-    <div class="empty">
-      {{ icon('roles') }}
-      <h3>Aucun rôle configuré</h3>
-      <p>Créez d'abord les rôles du culte (modération, prédication…) pour pouvoir générer un planning.</p>
-      <a class="btn btn-primary" href="/roles">{{ icon('plus') }} Créer des rôles</a>
-    </div>
-  {% else %}
-    <div class="summary">
-      <span><strong>{{ planning.dimanches|length }}</strong> dimanches</span>
-      {% if planning.est_vide %}
-        <span class="badge">Pas encore généré</span>
-      {% else %}
-        <span><strong>{{ planning.taux_couverture }} %</strong> des places pourvues</span>
-        {% if planning.places_manquantes %}
-          <span class="badge badge-warning">{{ icon('alert', 'i-sm') }} {{ planning.places_manquantes }} place{{ 's' if planning.places_manquantes > 1 }} à pourvoir</span>
-        {% else %}
-          <span class="badge badge-success">{{ icon('check', 'i-sm') }} Complet</span>
-        {% endif %}
-      {% endif %}
-    </div>
-
-    {# Vue tableau (ordinateur / tablette) #}
-    <div class="table-wrap planning-table">
-      <table class="planning">
-        <thead>
-          <tr>
-            <th class="role-col" scope="col">Rôle</th>
-            {% for d in planning.dimanches %}
-            <th scope="col" class="{{ 'is-next' if d == prochain }}">
-              <span class="dow">{{ 'Prochain' if d == prochain else 'Dimanche' }}</span>
-              <span class="dnum">{{ d.day }} {{ MOIS_COURTS[d.month] }}</span>
-            </th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for ligne in planning.lignes %}
-          <tr>
-            <th scope="row" class="role-col">
-              <div class="role-name">{{ ligne.role.nom }}</div>
-              <div class="role-quota">{{ ligne.role.quota }} personne{{ 's' if ligne.role.quota > 1 }}</div>
-            </th>
-            {% for cell in ligne.cellules %}
-            <td class="slot {{ 'is-next' if cell.date == prochain }}">
-              <a class="slot-link" href="/planning/modifier?date_str={{ cell.date.isoformat() }}&role_id={{ ligne.role.id }}"
-                 aria-label="{{ ligne.role.nom }}, {{ cell.date|date_fr }} : {{ cell.noms|join(', ') if cell.noms else 'personne' }}. Modifier">
-                {% for nom in cell.noms %}<span class="slot-name">{{ nom }}</span>{% endfor %}
-                {% if not cell.noms and planning.est_vide %}<span class="slot-empty">—</span>{% endif %}
-                {% if cell.manque and not planning.est_vide %}<span class="slot-missing">{{ icon('alert', 'i-sm') }} {{ cell.manque }} à pourvoir</span>{% endif %}
-                <span class="edit-hint">{{ icon('pencil', 'i-sm') }} Modifier</span>
-              </a>
-            </td>
-            {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {# Vue cartes (mobile) #}
-    <div class="sunday-cards">
-      {% for d, cellules in planning.par_dimanche().items() %}
-      <article class="sunday-card {{ 'is-next' if d == prochain }}">
-        <header class="sunday-card-head">
-          <div class="date-tile"><div class="m">Dim.</div><div class="d">{{ d.day }}</div></div>
-          <h3>{{ d|date_fr }}</h3>
-          {% if d == prochain %}<span class="badge badge-accent" style="margin-left:auto">Prochain</span>{% endif %}
-        </header>
-        {% for role, cell in cellules %}
-        <a class="sunday-row" href="/planning/modifier?date_str={{ d.isoformat() }}&role_id={{ role.id }}">
-          <span class="role">{{ role.nom }}</span>
-          <span class="who">
-            {% if cell.noms %}{{ cell.noms|join(', ') }}{% elif planning.est_vide %}<span class="slot-empty">—</span>{% endif %}
-            {% if cell.manque and not planning.est_vide %}<br><span class="slot-missing">{{ icon('alert', 'i-sm') }} {{ cell.manque }} à pourvoir</span>{% endif %}
-          </span>
-          {{ icon('chevron-right', 'i-sm') }}
-        </a>
-        {% endfor %}
-      </article>
-      {% endfor %}
-    </div>
-  {% endif %}
+{% elif planning.est_vide %}
+<div class="weeks-empty">
+  <h2>{{ MOIS_FR[m] }} n'est pas encore planifié</h2>
+  <p>Le planning est réparti équitablement entre les membres et respecte les absences signalées. Vous pourrez ensuite modifier chaque case.</p>
+  <form action="/generer_planning" method="post">
+    <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+    <button class="btn btn-acc" type="submit" data-loading>{{ icon('sparkles') }} Générer {{ MOIS_FR[m]|lower }}</button>
+  </form>
+</div>
+{% else %}
+{% if proposition %}
+<section class="proposal" aria-label="Nouvelle proposition">
+  <div class="proposal-text">
+    <strong>Nouvelle proposition, pas encore enregistrée</strong>
+    <span>{{ changements|length }} case{{ 's' if changements|length > 1 }} change{{ 'nt' if changements|length > 1 }} par rapport au planning actuel. Elles sont surlignées ci-dessous.</span>
+  </div>
+  <div class="proposal-actions">
+    <form action="/planning/proposition/annuler" method="post">
+      <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+      <button class="btn btn-quiet" type="submit">Garder l'actuel</button>
+    </form>
+    <form action="/generer_planning" method="post">
+      <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+      <button class="btn" type="submit" data-loading>{{ icon('sparkles') }} Autre combinaison</button>
+    </form>
+    <form action="/planning/proposition/valider" method="post">
+      <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+      <button class="btn btn-acc" type="submit" data-loading>{{ icon('check') }} Valider pour {{ MOIS_FR[m]|lower }}</button>
+    </form>
+  </div>
 </section>
+{% endif %}
+<p class="summary">
+  <span><b>{{ vue.dimanches|length }}</b> dimanches</span>
+  <span><b>{{ vue.places_totales - vue.places_manquantes }}</b> places pourvues sur {{ vue.places_totales }}</span>
+  {% if vue.places_manquantes %}<span class="warn">{{ vue.places_manquantes }} à pourvoir</span>{% endif %}
+</p>
+<div class="weeks{{ ' is-proposal' if proposition }}" style="--cols: {{ vue.dimanches|length }}">
+  {% for d, cellules in vue.par_dimanche().items() %}
+  <article class="week{{ ' next' if d == prochain }}" aria-label="Dimanche {{ d.day }} {{ MOIS_FR[d.month]|lower }}">
+    <div class="week-head">
+      <div class="week-day">{{ '%02d'|format(d.day) }}</div>
+      <div class="week-label">{{ 'Ce dimanche' if d == prochain else 'Dimanche' }}</div>
+    </div>
+    {% for role, cell in cellules %}
+    {% if proposition %}
+    <div class="slot{{ ' is-changed' if (role.id, d) in changements }}">
+    {% else %}
+    <a class="slot" href="/planning/modifier?date_str={{ d.isoformat() }}&role_id={{ role.id }}">
+    {% endif %}
+      <span class="slot-role">{{ role.nom }}</span>
+      {% if cell.noms %}<span class="slot-who">{{ cell.noms|join(', ') }}</span>{% endif %}
+      {% if cell.manque %}<span class="slot-missing">{{ 'À pourvoir' if not cell.noms else cell.manque ~ ' de plus' }}</span>{% endif %}
+    {% if proposition %}</div>{% else %}</a>{% endif %}
+    {% endfor %}
+  </article>
+  {% endfor %}
+</div>
+{% if not proposition %}
+<div class="actions" style="margin-top:28px">
+  <button type="button" class="btn btn-quiet hide-sm" onclick="window.print()">{{ icon('printer') }} Imprimer</button>
+  <form action="/planning/reinitialiser" method="post" data-confirm="Toutes les affectations de {{ MOIS_FR[m]|lower }} {{ a }} seront supprimées. Les autres mois ne changent pas." data-confirm-title="Vider {{ MOIS_FR[m]|lower }} ?" data-confirm-ok="Vider le mois">
+    <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
+    <button class="btn btn-quiet" type="submit">{{ icon('trash') }} Vider le mois</button>
+  </form>
+</div>
+{% endif %}
+{% endif %}
 {% endblock %}

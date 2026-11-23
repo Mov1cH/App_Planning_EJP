@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier un rôle - Planning EJP{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <h2 class="h3 mb-4 text-gray-800">Modifier le rôle : {{ role.nom }}</h2>
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <form action="/roles/{{ role.id }}/modifier" method="POST">
+                <div class="mb-3">
+                    <label for="nom" class="form-label fw-bold">Nom du rôle</label>
+                    <input type="text" class="form-control" id="nom" name="nom" value="{{ role.nom }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="quota" class="form-label fw-bold">Quota (nombre de personnes requises)</label>
+                    <input type="number" class="form-control" id="quota" name="quota" value="{{ role.quota }}" min="1" required>
+                </div>
+                <div class="mb-4">
+                    <label for="ordre" class="form-label fw-bold">Position d'affichage</label>
+                    <input type="number" class="form-control" id="ordre" name="ordre" value="{{ role.ordre }}" required>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+                    <a href="/roles" class="btn btn-secondary">Annuler</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

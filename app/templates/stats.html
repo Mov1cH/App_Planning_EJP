@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Stats · {{ p.libelle }}{% endblock %}
+{% block page_class %}paper{% endblock %}
+{% block content %}
+{% set t = b.total %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Stats</h1>
+    <p class="page-sub stats-periode">{{ p.libelle }}</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ precedente.annee }}&n={{ precedente.n }}" aria-label="Période précédente">{{ icon('chevron-left') }}</a>
+    <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ suivante.annee }}&n={{ suivante.n }}" aria-label="Période suivante">{{ icon('chevron-right') }}</a>
+    {% if not b.vide %}<a class="btn" href="/stats/export/pdf?type={{ p.type }}&annee={{ p.annee }}&n={{ p.n }}">{{ icon('download') }} PDF</a>{% endif %}
+    <a class="btn btn-acc" href="/stats/culte?date_str={{ (a_pointer[-1] if a_pointer else dernier).isoformat() }}">{{ icon('check-square') }} Pointer un culte</a>
+  </div>
+</div>
+
+<div class="stats-tools">
+  <nav class="seg" aria-label="Période">
+    {% for cle, (nom, nb) in PERIODES.items() %}
+    {% set cible = p.debut %}
+    <a href="/stats?type={{ cle }}&annee={{ p.annee }}&n={{ ((cible.month - 1) // (12 // nb)) + 1 }}"{% if cle == p.type %} aria-current="page"{% endif %}>{{ {'mois': 'Mois', 'trimestre': 'Trimestre', 'semestre': 'Semestre', 'annee': 'Année'}[cle] }}</a>
+    {% endfor %}
+  </nav>
+  <nav class="shortcuts" aria-label="Listes du suivi">
+    <a class="shortcut" href="/stars">
+      <span class="shortcut-ic">{{ icon('star') }}</span>
+      <span><b>STAR</b><small>{{ nb_stars }} serviteur{{ 's' if nb_stars > 1 }}</small></span>
+    </a>
+    <a class="shortcut" href="/stats/departements">
+      <span class="shortcut-ic">{{ icon('layers') }}</span>
+      <span><b>Départements</b><small>{{ nb_deps }} département{{ 's' if nb_deps > 1 }}</small></span>
+    </a>
+  </nav>
+</div>
+
+{% if a_pointer %}
+<div class="todo">
+  <span class="todo-label">{{ a_pointer|length }} culte{{ 's' if a_pointer|length > 1 }} à pointer</span>
+  {% for d in a_pointer %}<a class="fchip" href="/stats/culte?date_str={{ d.isoformat() }}">{{ d.day }} {{ MOIS_COURTS[d.month] }}</a>{% endfor %}
+</div>
+{% endif %}
+
+<form class="jump jump-bar" action="/stats/culte" method="get">
+  <label class="label" for="jump-date">Ouvrir ou modifier le pointage du</label>
+  <input class="input" type="date" id="jump-date" name="date_str" value="{{ dernier.isoformat() }}" max="{{ dernier.isoformat() }}" required>
+  <button class="btn" type="submit">{{ icon('pencil') }} Ouvrir</button>
+</form>
+
+{% if b.vide %}
+<div class="weeks-empty">
+  <h2>Aucun culte pointé sur cette période</h2>
+  <p>Après chaque culte, pointez qui a servi dans chaque département et l'effectif présent. Les statistiques se calculent toutes seules.</p>
+  <a class="btn btn-acc" href="/stats/culte?date_str={{ (a_pointer[-1] if a_pointer else dernier).isoformat() }}">{{ icon('check-square') }} Pointer un culte</a>
+</div>
+{% else %}
+
+<section class="kpis" aria-label="Chiffres clés">
+  <div class="kpi"><b>{{ b.cultes|length }}</b><span>culte{{ 's' if b.cultes|length > 1 }} pointé{{ 's' if b.cultes|length > 1 }}</span></div>
+  <div class="kpi is-acc"><b>{{ t.taux if t.taux is not none else '–' }}<small>%</small></b><span>de présence ({{ t.presents }} sur {{ t.prevus }} prévus)</span></div>
+  <div class="kpi{{ ' is-alert' if t.absences }}"><b>{{ t.absences }}</b><span>absence{{ 's' if t.absences > 1 }} ou remplacement{{ 's' if t.absences > 1 }}</span></div>
+  <div class="kpi"><b>{{ b.effectif_moyen if b.effectif_moyen is not none else '–' }}</b><span>personnes en moyenne au culte{% if b.hommes_moyen is not none %} · {{ b.hommes_moyen }} H, {{ b.femmes_moyen }} F{% endif %}</span></div>
+</section>
+
+{% if p.type != 'mois' %}
+<section class="stat-block" aria-labelledby="t-mois">
+  <h2 id="t-mois">Mois par mois</h2>
+  {% set max_m = (b.par_mois|map(attribute='compteurs.services')|max) or 1 %}
+  <ul class="bars">
+    {% for lm in b.par_mois %}
+    <li>
+      <a class="bar-name" href="/stats?type=mois&annee={{ lm.annee }}&n={{ lm.mois }}">{{ MOIS_FR[lm.mois] }}</a>
+      <span class="bar"><i style="width: {{ (100 * lm.compteurs.services / max_m)|round(1) }}%"></i></span>
+      <span class="bar-val">{{ lm.compteurs.services }}<small> services</small></span>
+      <span class="bar-meta">{% if lm.cultes %}{{ lm.cultes }} culte{{ 's' if lm.cultes > 1 }}{% if lm.compteurs.taux is not none %} · {{ lm.compteurs.taux }} %{% endif %}{% if lm.effectif_moyen %} · {{ lm.effectif_moyen }} pers.{% endif %}{% else %}—{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="stat-grid">
+  <section class="stat-block" aria-labelledby="t-cultes">
+    <div class="stat-head"><h2 id="t-cultes">Par culte</h2></div>
+    <ul class="rows culte-rows">
+      {% for c in b.cultes %}
+      <li>
+        <span class="date">{{ c.date.day }} {{ MOIS_COURTS[c.date.month] }}</span>
+        <div class="grow">
+          <div class="title">{{ c.compteurs.services }} services{% if c.compteurs.absences %} <span class="tag-alert">{{ c.compteurs.absences }} absence{{ 's' if c.compteurs.absences > 1 }}</span>{% endif %}</div>
+          <div class="meta">{% if c.effectif is not none %}{{ c.effectif }} personnes · {{ c.hommes or 0 }} H, {{ c.femmes or 0 }} F{% else %}Effectif non renseigné{% endif %}</div>
+        </div>
+        <a class="culte-edit" href="/stats/culte?date_str={{ c.date.isoformat() }}" aria-label="Modifier le pointage du {{ c.date.day }} {{ MOIS_FR[c.date.month]|lower }}">{{ icon('pencil') }} Modifier</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="stat-block" aria-labelledby="t-deps">
+    <div class="stat-head"><h2 id="t-deps">Par département</h2><a class="btn btn-quiet btn-sm" href="/stats/departements">Gérer</a></div>
+    {% set rd = radar(radar_items) %}
+    {% if rd %}
+    <figure class="radar">
+      <svg viewBox="0 0 {{ rd.largeur }} {{ rd.hauteur }}" role="img" aria-labelledby="radar-desc">
+        <desc id="radar-desc">Services par département : {% for nom, n in radar_items %}{{ nom }} {{ n }}{{ ', ' if not loop.last }}{% endfor %}.</desc>
+        {% for g in rd.grille %}<polygon class="radar-grid{{ ' is-outer' if loop.last }}" points="{{ g }}"/>{% endfor %}
+        {% for x, y in rd.axes %}<line class="radar-axis" x1="{{ rd.cx }}" y1="{{ rd.cy }}" x2="{{ '%.1f'|format(x) }}" y2="{{ '%.1f'|format(y) }}"/>{% endfor %}
+        <polygon class="radar-area" points="{{ rd.polygone }}"/>
+        {% for x, y in rd.points %}<circle class="radar-dot" cx="{{ '%.1f'|format(x) }}" cy="{{ '%.1f'|format(y) }}" r="4.5"/>{% endfor %}
+        {% for e in rd.etiquettes %}
+        <text class="radar-label{{ ' is-zero' if not e.valeur }}" x="{{ e.x }}" y="{{ e.y }}" text-anchor="{{ e.ancre }}">{% for l in e.lignes %}<tspan x="{{ e.x }}"{% if not loop.first %} dy="16"{% endif %}>{{ l }}{% if loop.last %} <tspan class="radar-val">{{ e.valeur }}</tspan>{% endif %}</tspan>{% endfor %}</text>
+        {% endfor %}
+      </svg>
+    </figure>
+    {% else %}
+    {% set max_d = (b.par_departement|map(attribute=1)|max) if b.par_departement else 1 %}
+    <ul class="bars">
+      {% for nom, n in b.par_departement %}
+      <li><span class="bar-name">{{ nom }}</span><span class="bar"><i style="width: {{ (100 * n / max_d)|round(1) }}%"></i></span><span class="bar-val">{{ n }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+<div class="stat-grid">
+  <section class="stat-block" aria-labelledby="t-eff">
+    <h2 id="t-eff">Services effectués</h2>
+    {% set max_e = (b.effectues|map(attribute=1)|max) if b.effectues else 1 %}
+    <ul class="bars" data-more>
+      {% for nom, n in b.effectues %}
+      <li{% if loop.index > 15 %} class="is-more" hidden{% endif %}><span class="bar-name">{{ nom }}</span><span class="bar"><i style="width: {{ (100 * n / max_e)|round(1) }}%"></i></span><span class="bar-val">{{ n }}</span></li>
+      {% endfor %}
+    </ul>
+    {% if b.effectues|length > 15 %}<button type="button" class="btn btn-quiet btn-sm" data-show-more>Voir les {{ b.effectues|length }} personnes</button>{% endif %}
+  </section>
+
+  <section class="stat-block" aria-labelledby="t-manq">
+    <h2 id="t-manq">Services manqués</h2>
+    {% if b.manques %}
+    <ul class="rows">
+      {% for nom, n in b.manques %}
+      <li><div class="grow"><div class="title">{{ nom }}</div>
+        <div class="meta">{% for d, dep, prevu, servi in b.absences_detail if stats_cle(prevu) == stats_cle(nom) %}{{ d.day }} {{ MOIS_COURTS[d.month] }}, {{ dep }}{% if servi %} (remplacé par {{ servi }}){% endif %}{{ '' if loop.last else ' · ' }}{% endfor %}</div></div>
+        <span class="count-pill">{{ n }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Aucune absence : toutes les personnes prévues ont servi.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% if b.sans_service or b.hors_liste %}
+<div class="stat-grid">
+  {% if b.sans_service %}
+  <section class="stat-block" aria-labelledby="t-sans">
+    <div class="stat-head"><h2 id="t-sans">STAR sans service</h2><a class="btn btn-quiet btn-sm" href="/stars">Liste des STAR</a></div>
+    <p class="muted" style="margin:-8px 0 14px">{{ b.sans_service|length }} STAR n'ont pas servi sur la période.</p>
+    <p class="names-list">{{ b.sans_service|join(', ') }}</p>
+  </section>
+  {% endif %}
+  {% if b.hors_liste %}
+  <section class="stat-block" aria-labelledby="t-hors">
+    <h2 id="t-hors">Hors liste des STAR</h2>
+    <p class="muted" style="margin:-8px 0 14px">Ces personnes ont servi mais ne sont pas dans la liste des STAR (nom mal orthographié, ou à ajouter).</p>
+    <p class="names-list is-alert">{{ b.hors_liste|join(', ') }}</p>
+    <form action="/stars" method="post" style="margin-top:16px">
+      <input type="hidden" name="noms" value="{{ b.hors_liste|join(', ') }}">
+      <button class="btn btn-sm" type="submit">{{ icon('plus') }} Les ajouter aux STAR</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.querySelectorAll("[data-show-more]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    b.previousElementSibling.querySelectorAll(".is-more").forEach(function (li) { li.hidden = false; });
+    b.remove();
+  });
+});
+</script>
+{% endblock %}

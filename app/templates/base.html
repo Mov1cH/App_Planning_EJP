@@ -1,77 +1,64 @@
 {%- set path = request.url.path -%}
-{%- macro nav_current(prefix, exact=False) -%}
+{%- macro cur(prefix, exact=False) -%}
   {%- if (exact and path == prefix) or (not exact and path.startswith(prefix)) %} aria-current="page"{% endif -%}
 {%- endmacro -%}
+{#- Ordre chronologique : préparer le culte, le vivre, en tirer le bilan ; puis les réglages des équipes. -#}
+{%- set nav = [
+  ('/', True, 'home', 'Accueil', 1, []),
+  ('/indisponibilites', False, 'calendar-x', 'Absences', 2, []),
+  ('/generateur', False, 'calendar', 'Planning', 2, ['/planning']),
+  ('/deroule', False, 'clock', 'Déroulé', 2, []),
+  ('/stats', False, 'chart', 'Stats', 3, ['/stars']),
+  ('/membres', False, 'users', 'Équipe', 4, ['/roles']),
+] -%}
+{%- set tabs = nav[:5] + [('/plus', False, 'more', 'Plus', 0, ['/membres', '/roles', '/profil'])] -%}
+{%- set o = org(request) or ORGANISATIONS["ejp"] -%}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" style="{{ accent(request) }}">
 <head>
   {% include "_head.html" %}
-  <title>{% block title %}Planning{% endblock %} · Planning EJP</title>
+  <title>{% block title %}Planning{% endblock %} · Planning</title>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
 {% include "_icons.html" %}
 <a class="skip-link" href="#contenu">Aller au contenu</a>
 
-<div class="app">
-  <aside class="sidebar" aria-label="Navigation principale">
-    <a class="brand" href="/">
-      <img class="logo-img" src="/static/logo-mark.png" alt="" width="28" height="40">
-      <span class="brand-text">
-        <span class="brand-title">Planning</span>
-        <span class="brand-sub">{{ current_eglise.nom_eglise if current_eglise else "EJP" }}</span>
-      </span>
-    </a>
-    <nav class="nav">
-      <a class="nav-link" href="/"{{ nav_current('/', True) }}>{{ icon('home') }} Tableau de bord</a>
-      <a class="nav-link" href="/generateur"{{ nav_current('/generateur') }}{{ nav_current('/planning') }}>{{ icon('calendar') }} Planning</a>
-      <span class="nav-label">Coordination</span>
-      <a class="nav-link" href="/membres"{{ nav_current('/membres') }}>{{ icon('users') }} Membres</a>
-      <a class="nav-link" href="/roles"{{ nav_current('/roles') }}>{{ icon('roles') }} Rôles</a>
-      <a class="nav-link" href="/indisponibilites"{{ nav_current('/indisponibilites') }}>{{ icon('calendar-x') }} Indisponibilités</a>
-    </nav>
-    <div class="sidebar-foot">
-      <a class="nav-link" href="/profil"{{ nav_current('/profil') }}>{{ icon('user') }} Mon compte</a>
-      <a class="nav-link" href="/logout">{{ icon('logout') }} Déconnexion</a>
-    </div>
-  </aside>
+<nav class="rail" aria-label="Navigation principale">
+  <a class="rail-logo" href="/" aria-label="Accueil"><img src="{{ o.mark }}" alt="{{ o.nom }}"></a>
+  {% for href, exact, ic, label, groupe, aussi in nav %}
+  {% if not loop.first and groupe != loop.previtem[4] %}<span class="rail-sep" aria-hidden="true"></span>{% endif %}
+  <a class="rail-link" href="{{ href }}"{{ cur(href, exact) }}{% for x in aussi %}{{ cur(x) }}{% endfor %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+  {% endfor %}
+  <div class="rail-foot">
+    <a class="rail-link" href="/profil"{{ cur('/profil') }}>{{ icon('user') }}<span>Compte</span></a>
+    <a class="rail-link" href="/logout">{{ icon('logout') }}<span>Quitter</span></a>
+  </div>
+</nav>
 
-  <header class="topbar">
-    <a class="brand" href="/">
-      <img class="logo-img" src="/static/logo-mark.png" alt="" width="22" height="32">
-      <span class="brand-text">
-        <span class="brand-title">Planning</span>
-        <span class="brand-sub">{{ current_eglise.nom_eglise if current_eglise else "EJP" }}</span>
-      </span>
-    </a>
-    <div class="actions">
-      <a class="icon-btn" href="/profil" aria-label="Mon compte">{{ icon('user') }}</a>
-      <a class="icon-btn" href="/logout" aria-label="Déconnexion">{{ icon('logout') }}</a>
-    </div>
+<div class="main">
+  <header class="mobile-top">
+    <a href="/" aria-label="Accueil"><img src="{{ o.mark }}" alt="{{ o.nom }}"></a>
+    <span class="who">{{ current_eglise.nom_eglise if current_eglise else '' }}</span>
+    <a class="icon-btn" href="/profil" aria-label="Mon compte">{{ icon('user') }}</a>
   </header>
-
-  <main class="main" id="contenu">
+  {% block topline %}{% endblock %}
+  <main id="contenu" class="page {% block page_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
-
-  <nav class="bottombar" aria-label="Navigation principale">
-    <a class="tab" href="/"{{ nav_current('/', True) }}>{{ icon('home') }}<span>Accueil</span></a>
-    <a class="tab" href="/generateur"{{ nav_current('/generateur') }}{{ nav_current('/planning') }}>{{ icon('calendar') }}<span>Planning</span></a>
-    <a class="tab" href="/membres"{{ nav_current('/membres') }}>{{ icon('users') }}<span>Membres</span></a>
-    <a class="tab" href="/indisponibilites"{{ nav_current('/indisponibilites') }}>{{ icon('calendar-x') }}<span>Indispos</span></a>
-    <a class="tab" href="/roles"{{ nav_current('/roles') }}>{{ icon('roles') }}<span>Rôles</span></a>
-  </nav>
 </div>
+
+<nav class="bottombar" aria-label="Navigation principale">
+  {% for href, exact, ic, label, groupe, aussi in tabs %}
+  <a class="tab" href="{{ href }}"{{ cur(href, exact) }}{% for x in aussi %}{{ cur(x) }}{% endfor %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+  {% endfor %}
+</nav>
 
 {% set flashes = get_flashes(request) %}
 {% if flashes %}
 <div class="toasts" role="status" aria-live="polite">
   {% for categorie, message in flashes %}
-  <div class="toast toast-{{ categorie }}">
-    {{ icon('check-circle' if categorie == 'succes' else 'alert') }}
-    <p>{{ message }}</p>
-    <button type="button" aria-label="Fermer">{{ icon('x', 'i-sm') }}</button>
-  </div>
+  <div class="toast toast-{{ categorie }}"><span class="dot" aria-hidden="true"></span><p>{{ message }}</p><button type="button" aria-label="Fermer">{{ icon('x', 'i-sm') }}</button></div>
   {% endfor %}
 </div>
 {% endif %}
@@ -79,20 +66,17 @@
 <dialog class="dialog" id="confirm-dialog" aria-labelledby="confirm-title">
   <form method="dialog">
     <div class="dialog-body">
-      <div class="dialog-icon">{{ icon('alert') }}</div>
-      <div>
-        <h2 id="confirm-title" data-confirm-title>Confirmer</h2>
-        <p data-confirm-text></p>
-      </div>
+      <h2 id="confirm-title" data-confirm-title>Confirmer</h2>
+      <p data-confirm-text></p>
     </div>
     <div class="dialog-foot">
-      <button class="btn btn-ghost" value="cancel">Annuler</button>
+      <button class="btn btn-quiet" value="cancel">Annuler</button>
       <button class="btn btn-danger" value="ok" data-confirm-button>Supprimer</button>
     </div>
   </form>
 </dialog>
 
-<script src="/static/js/app.js?v=3" defer></script>
+<script src="/static/js/app.js?v=5" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

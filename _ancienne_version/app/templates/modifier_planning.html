@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier Planning - Planning EJP{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3">
+                    <h4 class="mb-0 text-primary">Modifier le planning</h4>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">
+                        Vous modifiez les membres pour le rôle <strong>{{ role.nom }}</strong> du <strong>{{ planning_date.strftime('%d/%m/%Y') }}</strong>.
+                    </p>
+
+                    <form action="/planning/modifier" method="POST">
+                        <input type="hidden" name="date_str" value="{{ planning_date.strftime('%Y-%m-%d') }}">
+                        <input type="hidden" name="role_id" value="{{ role.id }}">
+
+                        <div class="mb-3">
+                            <label for="membres" class="form-label fw-bold">Membres éligibles pour ce rôle :</label>
+                            <select name="membres_ids" id="membres" class="form-select" multiple size="10">
+                                {% for membre in membres_eligibles %}
+                                    <option value="{{ membre.id }}" {% if membre.id in membres_assignes_ids %}selected{% endif %}>
+                                        {{ membre.prenom + " " if membre.prenom }}{{ membre.nom }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Maintenez Ctrl (ou Cmd sur Mac) pour sélectionner plusieurs membres.</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2">Enregistrer les modifications</button>
+                        <a href="/generateur?annee={{ planning_date.year }}&mois={{ planning_date.month }}" class="btn btn-secondary w-100 mt-2">Annuler</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

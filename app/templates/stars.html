@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}STAR{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">STAR</h1>
+    <p class="page-sub">Les serviteurs suivis dans les stats : {{ stars|length }} personne{{ 's' if stars|length > 1 }}. Cette liste est distincte des <a class="link" href="/membres">membres du planning</a> ; une même personne peut être dans les deux.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/stats/departements">Départements</a>
+  </div>
+</div>
+
+<div class="layout-side">
+  <section aria-labelledby="liste-titre" data-filter-list>
+    <h2 id="liste-titre" class="sr-only">Liste des STAR</h2>
+    {% if stars %}
+    <div class="filters">
+      <label class="input-icon">
+        <span class="sr-only">Rechercher</span>{{ icon('search') }}
+        <input class="input" type="search" placeholder="Rechercher un STAR" data-filter-input>
+      </label>
+      <span class="muted"><span data-filter-count>{{ stars|length }}</span> STAR</span>
+    </div>
+    <ul class="rows">
+      {% for s in stars %}
+      {% set k = stats_cle(s.nom) %}
+      <li data-filter-item>
+        <span class="initials" aria-hidden="true">{{ s.nom[:1] }}</span>
+        <form class="grow dep-rename" action="/stars/{{ s.id }}/renommer" method="post">
+          <label class="sr-only" for="star-{{ s.id }}">Nom</label>
+          <input class="input input-flat" id="star-{{ s.id }}" name="nom" value="{{ s.nom }}" maxlength="60" required><span class="sr-only">{{ s.nom }}</span>
+          <button class="btn btn-sm" type="submit">Renommer</button>
+        </form>
+        <span class="tail star-meta">
+          {% if k in membres_cles %}<span class="tag tag-acc">Membre aussi</span>{% endif %}
+          {{ compte.get(k, 0) }} service{{ 's' if compte.get(k, 0) > 1 }} / 12 mois
+        </span>
+        <span class="ops">
+          <form action="/stars/{{ s.id }}/supprimer" method="post" data-confirm="« {{ s.nom }} » ne sera plus proposé au pointage. Ses services passés restent dans les statistiques." data-confirm-title="Retirer ce STAR ?" data-confirm-ok="Retirer">
+            <button class="icon-btn danger" type="submit" aria-label="Retirer {{ s.nom }}">{{ icon('trash') }}</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="muted" data-filter-empty hidden style="padding:24px 0">Aucun résultat.</p>
+    {% else %}
+    <div class="empty"><h3>Aucun STAR pour l'instant</h3><p>Ajoutez les serviteurs à suivre dans les statistiques, ou reprenez d'un clic les membres du planning.</p></div>
+    {% endif %}
+  </section>
+
+  <aside class="panel" aria-labelledby="ajout-titre">
+    <h2 id="ajout-titre">Ajouter des STAR</h2>
+    <form action="/stars" method="post">
+      <div class="field">
+        <label class="label" for="noms">Noms</label>
+        <textarea class="input textarea" id="noms" name="noms" rows="5" placeholder="Un nom par ligne" required></textarea>
+        <span class="hint">Vous pouvez en coller plusieurs d'un coup, un par ligne.</span>
+      </div>
+      <button class="btn btn-dark btn-block" type="submit" data-loading>Ajouter</button>
+    </form>
+    {% if nb_membres %}
+    <form action="/stars/importer-membres" method="post" style="margin-top:12px">
+      <button class="btn btn-quiet btn-block" type="submit">Reprendre les {{ nb_membres }} membres du planning</button>
+    </form>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

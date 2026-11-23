@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Pointage du {{ jour.day }} {{ MOIS_FR[jour.month]|lower }}{% endblock %}
+{% block page_class %}paper{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="/stats?type=mois&annee={{ jour.year }}&n={{ jour.month }}">{{ icon('arrow-left') }} Stats</a>
+    <h1 class="page-title">{{ jour.day }} {{ MOIS_FR[jour.month]|lower }} <span class="year year-acc">{{ jour.year }}</span></h1>
+    <p class="page-sub">{% if culte %}Pointage enregistré. Vous pouvez le corriger.{% else %}Pré-rempli avec le planning du jour : corrigez seulement les absents et les remplaçants.{% endif %}</p>
+  </div>
+  <div class="actions">
+    <form class="jump" action="/stats/culte" method="get" aria-label="Choisir un autre culte">
+      <input class="input" type="date" name="date_str" value="{{ jour.isoformat() }}" aria-label="Date du culte" onchange="this.form.submit()">
+    </form>
+    <a class="btn btn-icon" href="/stats/culte?date_str={{ precedent.isoformat() }}" aria-label="Dimanche précédent">{{ icon('chevron-left') }}</a>
+    <a class="btn btn-icon" href="/stats/culte?date_str={{ suivant.isoformat() }}" aria-label="Dimanche suivant">{{ icon('chevron-right') }}</a>
+  </div>
+</div>
+
+{% if jour.weekday() != 6 %}<p class="notice">Cette date n'est pas un dimanche.</p>{% endif %}
+{% if futur %}<p class="notice">Ce culte n'a pas encore eu lieu : le pointage pourra être complété après.</p>{% endif %}
+
+<datalist id="membres-liste">{% for m in membres %}<option value="{{ m }}">{% endfor %}</datalist>
+
+<form id="pointage" action="/stats/culte" method="post">
+  <input type="hidden" name="date" value="{{ jour.isoformat() }}">
+
+  <section class="effectif" aria-labelledby="t-effectif">
+    <h2 id="t-effectif">Effectif du culte</h2>
+    <div class="effectif-fields">
+      <label class="field"><span class="label">Hommes</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="hommes" value="{{ culte.hommes if culte and culte.hommes is not none else '' }}" data-eff></label>
+      <label class="field"><span class="label">Femmes</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="femmes" value="{{ culte.femmes if culte and culte.femmes is not none else '' }}" data-eff></label>
+      <div class="effectif-total"><span class="label">Total</span><b data-eff-total>–</b></div>
+    </div>
+  </section>
+
+  {% if a_des_stars %}<p class="pt-legend"><i></i>Bordure en pointillé : nom absent de la <a class="link" href="/stars">liste des STAR</a>.</p>
+  {% else %}<p class="notice">La liste des STAR est vide : les suggestions viennent des membres du planning. <a class="link" href="/stars">Créer la liste des STAR</a></p>{% endif %}
+  <div class="pt-summary" aria-live="polite"><span data-sum-present>0</span> présents · <span data-sum-absent>0</span> absents · <span data-sum-remplace>0</span> remplacés</div>
+
+  <div id="groupes">
+    {% for dep, rows in groupes %}
+    <section class="pt-group" data-dep="{{ dep }}">
+      <h3>{{ dep }}</h3>
+      <div class="pt-head" aria-hidden="true"><span>Prévu</span><span>A servi</span><span></span></div>
+      <div class="pt-rows">
+        {% for r in rows %}
+        <div class="pt-row">
+          <input type="hidden" name="departement" value="{{ dep }}">
+          <input class="input" name="prevu" value="{{ r.prevu }}" list="membres-liste" placeholder="Personne prévue" aria-label="{{ dep }} : personne prévue" autocomplete="off">
+          <input class="input" name="servi" value="{{ r.servi }}" list="membres-liste" placeholder="Personne ayant servi" aria-label="{{ dep }} : personne ayant servi" autocomplete="off">
+          <span class="pt-state"></span>
+          <span class="pt-ops">
+            <button type="button" class="fchip" data-absent>Absent</button>
+            <button type="button" class="icon-btn" data-remove aria-label="Retirer la ligne">{{ icon('x') }}</button>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-quiet btn-sm" data-add>{{ icon('plus') }} Ajouter une personne</button>
+    </section>
+    {% endfor %}
+  </div>
+
+  <div class="pt-add-dep">
+    <select class="select" id="ajout-dep" aria-label="Département à ajouter">
+      <option value="">Ajouter un département…</option>
+      {% for d in departements %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+    </select>
+    <a class="btn btn-quiet btn-sm" href="/stats/departements">Gérer les départements</a>
+  </div>
+
+  <div class="savebar">
+    {% if culte %}<button class="btn btn-quiet" type="submit" form="suppr-culte">{{ icon('trash') }} Supprimer</button>{% endif %}
+    <button class="btn btn-acc" type="submit" data-loading>{{ icon('check') }} Enregistrer le pointage</button>
+  </div>
+</form>
+{% if culte %}
+<form id="suppr-culte" action="/stats/culte/supprimer" method="post" data-confirm="Le pointage du {{ jour.day }} {{ MOIS_FR[jour.month]|lower }} sera supprimé des statistiques." data-confirm-title="Supprimer ce pointage ?" data-confirm-ok="Supprimer">
+  <input type="hidden" name="date_str" value="{{ jour.isoformat() }}">
+</form>
+{% endif %}
+
+<template id="tpl-row">
+  <div class="pt-row">
+    <input type="hidden" name="departement" value="">
+    <input class="input" name="prevu" value="" list="membres-liste" placeholder="Personne prévue" autocomplete="off">
+    <input class="input" name="servi" value="" list="membres-liste" placeholder="Personne ayant servi" autocomplete="off">
+    <span class="pt-state"></span>
+    <span class="pt-ops">
+      <button type="button" class="fchip" data-absent>Absent</button>
+      <button type="button" class="icon-btn" data-remove aria-label="Retirer la ligne">{{ icon('x') }}</button>
+    </span>
+  </div>
+</template>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function () {
+  var form = document.getElementById("pointage");
+  var tpl = document.getElementById("tpl-row");
+  var connus = {{ (membres if a_des_stars else [])|map('lower')|list|tojson }}.map(function (n) { return cle(n); });
+  function verifier(input) { var v = input.value.trim(); input.classList.toggle("is-unknown", connus.length > 0 && v !== "" && connus.indexOf(cle(v)) === -1); input.title = input.classList.contains("is-unknown") ? "Pas dans la liste des STAR" : ""; }
+  function cle(s) { return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+  function etat(row) {
+    var p = row.querySelector('[name=prevu]').value.trim(), s = row.querySelector('[name=servi]').value.trim();
+    var el = row.querySelector(".pt-state"), btn = row.querySelector("[data-absent]");
+    var e = !p && !s ? "" : !p ? "ajoute" : !s ? "absent" : cle(p) === cle(s) ? "present" : "remplace";
+    row.dataset.etat = e;
+    verifier(row.querySelector('[name=prevu]')); verifier(row.querySelector('[name=servi]'));
+    el.textContent = { "": "", ajoute: "Ajouté", absent: "Absent", present: "Présent", remplace: "Remplacé" }[e];
+    btn.textContent = e === "absent" ? "Présent" : "Absent";
+    btn.hidden = !p;
+    return e;
+  }
+  function resume() {
+    var n = { present: 0, absent: 0, remplace: 0 };
+    form.querySelectorAll(".pt-row").forEach(function (r) { var e = etat(r); if (n[e] !== undefined) n[e]++; });
+    form.querySelector("[data-sum-present]").textContent = n.present;
+    form.querySelector("[data-sum-absent]").textContent = n.absent;
+    form.querySelector("[data-sum-remplace]").textContent = n.remplace;
+  }
+  function effectif() {
+    var t = 0, vu = false;
+    form.querySelectorAll("[data-eff]").forEach(function (i) { if (i.value !== "") { vu = true; t += parseInt(i.value, 10) || 0; } });
+    form.querySelector("[data-eff-total]").textContent = vu ? t : "–";
+  }
+  function nouvelleLigne(groupe) {
+    var row = tpl.content.firstElementChild.cloneNode(true);
+    var dep = groupe.dataset.dep;
+    row.querySelector('[name=departement]').value = dep;
+    row.querySelector('[name=prevu]').setAttribute("aria-label", dep + " : personne prévue");
+    row.querySelector('[name=servi]').setAttribute("aria-label", dep + " : personne ayant servi");
+    groupe.querySelector(".pt-rows").appendChild(row);
+    return row;
+  }
+  form.addEventListener("input", function (ev) {
+    var row = ev.target.closest(".pt-row");
+    if (row && ev.target.name === "prevu") {
+      var s = row.querySelector('[name=servi]');
+      if (!s.dataset.touche) s.value = ev.target.value;   // par défaut, la personne prévue a servi
+    }
+    if (row && ev.target.name === "servi") ev.target.dataset.touche = "1";
+    if (ev.target.matches("[data-eff]")) effectif();
+    resume();
+  });
+  form.addEventListener("click", function (ev) {
+    var b = ev.target.closest("button"); if (!b) return;
+    var row = b.closest(".pt-row");
+    if (b.hasAttribute("data-absent")) {
+      var p = row.querySelector('[name=prevu]'), s = row.querySelector('[name=servi]');
+      s.value = row.dataset.etat === "absent" ? p.value : ""; s.dataset.touche = "1";
+      if (!s.value) s.focus();
+      resume();
+    } else if (b.hasAttribute("data-remove")) {
+      var g = row.closest(".pt-group"); row.remove();
+      if (!g.querySelector(".pt-row")) g.remove();
+      resume();
+    } else if (b.hasAttribute("data-add")) {
+      nouvelleLigne(b.closest(".pt-group")).querySelector('[name=prevu]').focus();
+    }
+  });
+  document.getElementById("ajout-dep").addEventListener("change", function (ev) {
+    var dep = ev.target.value; if (!dep) return;
+    var g = Array.prototype.find.call(document.querySelectorAll(".pt-group"), function (x) { return x.dataset.dep === dep; });
+    if (!g) {
+      g = document.createElement("section"); g.className = "pt-group"; g.dataset.dep = dep;
+      g.innerHTML = '<h3></h3><div class="pt-head" aria-hidden="true"><span>Prévu</span><span>A servi</span><span></span></div><div class="pt-rows"></div>' +
+        '<button type="button" class="btn btn-quiet btn-sm" data-add>+ Ajouter une personne</button>';
+      g.querySelector("h3").textContent = dep;
+      document.getElementById("groupes").appendChild(g);
+    }
+    var row = nouvelleLigne(g); row.querySelector('[name=prevu]').focus();
+    ev.target.value = ""; resume();
+  });
+  form.querySelectorAll('.pt-row [name=servi]').forEach(function (s) {
+    var p = s.closest(".pt-row").querySelector('[name=prevu]');
+    if (s.value !== p.value) s.dataset.touche = "1";
+  });
+  effectif(); resume();
+})();
+</script>
+{% endblock %}

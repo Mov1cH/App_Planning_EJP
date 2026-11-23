@@ -12,3 +12,6 @@ __pycache__/
 # Divers
 .DS_Store
 *.tgz
+.vercel
+.env*
+.env*.local

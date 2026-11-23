@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, Table, Boolean
+from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey, Table, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -21,6 +21,8 @@ class Eglise(Base):
     is_verified = Column(Boolean, default=False)
     verification_code = Column(String, nullable=True)
     reset_token = Column(String, nullable=True)
+    couleur = Column(String, nullable=True, default="emeraude")
+    organisation = Column(String, nullable=True, default="ejp")  # "ejp" ou "icc"
 
     membres = relationship("Membre", back_populates="eglise")
     indisponibilites = relationship("Indisponibilite", back_populates="eglise")
@@ -89,3 +91,82 @@ class Planning(Base):
     eglise = relationship("Eglise", back_populates="plannings")
     membre = relationship("Membre", back_populates="plannings")
     role = relationship("Role", back_populates="plannings")
+
+
+class Deroule(Base):
+    """Déroulé du culte (programme horaire) d'un dimanche, exportable en image."""
+    __tablename__ = "deroules"
+    __table_args__ = (UniqueConstraint("eglise_id", "date", name="uq_deroule_eglise_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    date = Column(Date, index=True)
+    data = Column(Text)  # JSON : titre, sous-titre, couleur, étapes, photo
+    updated_at = Column(DateTime)
+
+
+class PropositionPlanning(Base):
+    """Nouvelle combinaison proposée pour un mois, en attente de validation."""
+    __tablename__ = "propositions_planning"
+    __table_args__ = (UniqueConstraint("eglise_id", "annee", "mois", name="uq_proposition_eglise_mois"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    annee = Column(Integer)
+    mois = Column(Integer)
+    data = Column(Text)  # JSON : [[date ISO, role_id, membre_id], ...]
+    created_at = Column(DateTime)
+
+
+# ---------------------------------------------------------------------------
+# Suivi des cultes (statistiques)
+# ---------------------------------------------------------------------------
+class Departement(Base):
+    """Département suivi dans les statistiques (liste propre, indépendante des rôles)."""
+    __tablename__ = "departements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    nom = Column(String)
+    ordre = Column(Integer, default=0)
+
+
+class Culte(Base):
+    """Un culte pointé : effectif présent et services rendus."""
+    __tablename__ = "cultes"
+    __table_args__ = (UniqueConstraint("eglise_id", "date", name="uq_culte_eglise_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    date = Column(Date, index=True)
+    hommes = Column(Integer, nullable=True)
+    femmes = Column(Integer, nullable=True)
+    updated_at = Column(DateTime)
+
+    services = relationship("Service", back_populates="culte", cascade="all, delete-orphan",
+                            order_by="Service.position")
+
+
+class Service(Base):
+    """Une ligne du pointage : département, personne prévue, personne ayant servi."""
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    culte_id = Column(Integer, ForeignKey("cultes.id"), index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    departement = Column(String)  # nom conservé tel quel pour l'historique
+    prevu = Column(String, default="")
+    servi = Column(String, default="")
+    position = Column(Integer, default=0)
+
+    culte = relationship("Culte", back_populates="services")
+
+
+class Star(Base):
+    """Serviteur (STAR) suivi dans les statistiques — liste distincte des membres du planning."""
+    __tablename__ = "stars"
+    __table_args__ = (UniqueConstraint("eglise_id", "nom", name="uq_star_eglise_nom"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    nom = Column(String)

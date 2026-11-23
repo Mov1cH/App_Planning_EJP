@@ -1,33 +1,41 @@
+{%- set oc = request.cookies.get('org') -%}
+{%- set o = ORGANISATIONS.get(oc) if oc in ORGANISATIONS else None -%}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" style="{{ accent(request) }}">
 <head>
   {% include "_head.html" %}
-  <title>{% block title %}Connexion{% endblock %} · Planning EJP</title>
+  <title>{% block title %}Connexion{% endblock %} · Planning</title>
 </head>
 <body>
 {% include "_icons.html" %}
 <div class="auth">
   <aside class="auth-aside">
-    <img class="logo-white" src="/static/logo.png" alt="Église Jeunes Prodiges">
-    <div>
-      <h1>Chaque dimanche, <em>la bonne équipe</em> au bon poste.</h1>
-      <p>Organisez les services du culte en quelques minutes : membres, disponibilités et planning mensuel généré automatiquement.</p>
-      <ul class="auth-points">
-        <li>{{ icon('sparkles') }} Planning équitable généré en un clic</li>
-        <li>{{ icon('calendar-x') }} Indisponibilités respectées</li>
-        <li>{{ icon('download') }} Export PDF et Excel à partager</li>
-      </ul>
+    <div class="app-brand app-brand-light">
+      <svg viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">
+        <rect width="64" height="64" rx="15" fill="#fff"/>
+        <g fill="var(--acc)"><circle cx="32" cy="14" r="4.2"/><circle cx="47.6" cy="23" r="4.2"/><circle cx="47.6" cy="41" r="4.2"/><circle cx="32" cy="50" r="4.2"/><circle cx="16.4" cy="41" r="4.2"/><circle cx="16.4" cy="23" r="4.2"/></g>
+        <circle cx="32" cy="32" r="7.5" fill="var(--acc-light)"/>
+        <circle cx="32" cy="32" r="18" fill="none" stroke="var(--acc)" stroke-opacity=".3" stroke-width="1.5"/>
+      </svg>
+      <span>Planning</span>
     </div>
-    <p class="small">Planning EJP · Coordination des cultes</p>
-    <div class="flame" aria-hidden="true"></div>
+    <div>
+      <h1>Chaque dimanche, la bonne équipe au bon poste.</h1>
+      <p>Membres, absences, planning du mois et déroulé du culte au même endroit, pour les églises ICC et EJP.</p>
+    </div>
+    <small>Planning des cultes ICC et EJP</small>
+    <svg class="auth-mark auth-mark-planning" viewBox="0 0 64 64" aria-hidden="true">
+      <g fill="#fff"><circle cx="32" cy="14" r="4.2"/><circle cx="47.6" cy="23" r="4.2"/><circle cx="47.6" cy="41" r="4.2"/><circle cx="32" cy="50" r="4.2"/><circle cx="16.4" cy="41" r="4.2"/><circle cx="16.4" cy="23" r="4.2"/><circle cx="32" cy="32" r="7.5"/></g>
+      <circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="1.2"/>
+    </svg>
   </aside>
   <main class="auth-main">
     <div class="auth-card">
-      <img class="auth-mobile-logo logo-img" src="/static/logo.png" alt="Église Jeunes Prodiges">
+      <div class="app-brand app-brand-mobile"><img src="/static/brand/logo/{{ couleur_cle(request) }}.svg?v=4" alt=""><span>Planning</span></div>
       {% block content %}{% endblock %}
     </div>
   </main>
 </div>
-<script src="/static/js/app.js?v=3" defer></script>
+<script src="/static/js/app.js?v=5" defer></script>
 </body>
 </html>

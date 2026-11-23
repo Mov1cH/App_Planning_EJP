@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% block title %}Déroulé du {{ jour|date_fr('court') }}{% endblock %}
+{% block extra_head %}
+<style>
+/* ---------- Éditeur ---------- */
+.dr-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 520px); gap: 48px; align-items: start; }
+.dr-preview-wrap { position: sticky; top: 24px; }
+.dr-preview-frame { width: 100%; aspect-ratio: 1080 / 1550; overflow: hidden; border-radius: 18px; box-shadow: 0 24px 60px -24px rgba(0,0,0,.35); background: #eee; }
+.dr-preview-frame > div { transform-origin: 0 0; }
+.dr-steps { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--black); }
+.dr-step { display: grid; grid-template-columns: 132px 84px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.dr-step .input, .dr-step .select { min-height: 44px; padding: 9px 12px; border-radius: 12px; min-width: 0; width: 100%; }
+.dr-step .grow { display: grid; gap: 8px; }
+.dr-step .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.dr-step .ops { display: flex; flex-direction: column; gap: 2px; }
+.dr-step small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.dr-colors { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.dr-color { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1.5px var(--line); cursor: pointer; padding: 0; }
+.dr-color[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--black); }
+.dr-color-input { width: 44px; height: 44px; border: 0; padding: 0; background: none; cursor: pointer; }
+.dr-save-state { color: var(--muted); font-size: 14px; }
+.dr-photo { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.dr-photo img { width: 120px; height: 48px; object-fit: cover; border-radius: 8px; }
+@media (max-width: 1100px) { .dr-layout { grid-template-columns: minmax(0, 1fr); } .dr-preview-wrap { position: static; max-width: 520px; } }
+@media (max-width: 760px) {
+  .dr-step { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .dr-layout { gap: 28px; }
+  .dr-step .two { grid-template-columns: minmax(0, 1fr); }
+  .dr-step { gap: 8px; padding: 16px 0; }
+  .dr-step small { display: inline; margin-left: 4px; }
+  .dr-preview-wrap { order: -1; }
+  .dr-step .grow { grid-column: 1 / -1; }
+  .dr-step .ops { grid-column: 1 / -1; flex-direction: row; justify-content: flex-end; }
+}
+
+/* ---------- Affiche du déroulé (1080 × 1550, exportée en image) ---------- */
+#dr-poster { width: 1080px; height: 1550px; position: relative; overflow: hidden; font-family: "Inter", sans-serif; color: var(--dr); background: var(--dr-bg-2); }
+#dr-poster .p-head { position: absolute; inset: 0 0 auto 0; height: 300px; background: var(--dr-bg-1); padding: 68px 0 0 80px; }
+#dr-poster .p-title { font-family: "Inter Display", sans-serif; font-weight: 800; font-size: 92px; line-height: .95; text-transform: uppercase; letter-spacing: -.01em; transform: skewX(-9deg) scaleX(.8); transform-origin: 0 50%; white-space: nowrap; display: inline-block; }
+#dr-poster .p-sub { font-family: "Inter Display", sans-serif; font-weight: 800; font-size: 60px; line-height: 1; text-transform: uppercase; transform: skewX(-9deg) scaleX(.86); transform-origin: 0 50%; margin-top: 14px; }
+#dr-poster .p-date { font-weight: 400; font-style: italic; font-size: 34px; letter-spacing: .18em; margin-top: 22px; transform: skewX(-6deg); transform-origin: 0 50%; }
+#dr-poster .p-col { position: absolute; left: 0; top: 300px; width: 260px; bottom: var(--photo-h); background: var(--dr-bg-1); }
+#dr-poster .p-rows { position: absolute; left: 0; right: 0; top: 320px; bottom: calc(var(--photo-h) + 30px); display: flex; flex-direction: column; justify-content: space-evenly; }
+#dr-poster .p-row { display: grid; grid-template-columns: 260px 84px minmax(0, 1fr); align-items: start; }
+#dr-poster .p-time { text-align: center; font-weight: 700; font-size: 26px; line-height: 1.25; text-transform: uppercase; }
+#dr-poster .p-time span { display: block; font-weight: 500; }
+#dr-poster .p-line { height: 3px; background: var(--dr); margin: 16px 14px 0 2px; }
+#dr-poster .p-name { font-weight: 700; font-size: 32px; line-height: 1.2; text-transform: uppercase; padding-right: 40px; }
+#dr-poster .p-who { font-weight: 500; font-size: 23px; text-transform: uppercase; margin-top: 12px; opacity: .92; }
+#dr-poster .p-dense .p-time { font-size: 21px; } #dr-poster .p-dense .p-name { font-size: 26px; } #dr-poster .p-dense .p-who { font-size: 19px; margin-top: 6px; } #dr-poster .p-dense .p-line { margin-top: 12px; }
+#dr-poster .p-photo { position: absolute; left: 0; right: 0; bottom: 0; height: var(--photo-h); background-size: cover; background-position: center 30%; }
+#dr-poster .p-mark { position: absolute; right: -70px; top: 360px; height: 860px; opacity: .05; pointer-events: none; }
+
+/* ---------- Modèle ICC ---------- */
+@font-face { font-family: "Lora"; src: url("/static/fonts/lora-italic-500.woff") format("woff"); font-weight: 500; font-style: italic; font-display: swap; }
+#dr-poster-icc { width: 1080px; height: 1550px; position: relative; overflow: hidden; background: #fff; color: #111; font-family: "Inter", sans-serif; }
+#dr-poster-icc .band { position: absolute; width: 620px; height: 120px; background: linear-gradient(90deg, var(--icc-band), color-mix(in srgb, var(--icc-band) 70%, #2E7D55)); border-top: 5px solid var(--icc-gold); border-bottom: 5px solid var(--icc-gold); }
+#dr-poster-icc .band.l1 { left: -260px; top: 40px; transform: rotate(-42deg); }
+#dr-poster-icc .band.l2 { left: -330px; top: 120px; transform: rotate(-42deg); height: 70px; opacity: .92; }
+#dr-poster-icc .band.r1 { right: -260px; top: 40px; transform: rotate(42deg); }
+#dr-poster-icc .band.r2 { right: -330px; top: 120px; transform: rotate(42deg); height: 70px; opacity: .92; }
+#dr-poster-icc .i-head { position: absolute; left: 0; right: 0; top: 46px; text-align: center; }
+#dr-poster-icc .i-logo { height: 118px; width: auto; display: block; margin: 0 auto 10px; }
+#dr-poster-icc .i-church { font-family: "Lora", serif; font-weight: 500; font-size: 26px; text-transform: uppercase; letter-spacing: .01em; }
+#dr-poster-icc .i-word { font-family: "Lora", serif; font-weight: 600; font-size: 78px; line-height: 1; text-transform: uppercase; letter-spacing: -.01em; margin-top: 2px; }
+#dr-poster-icc .i-box { position: absolute; left: 120px; right: 120px; top: 300px; height: 130px; background: var(--icc-hl); display: flex; align-items: center; justify-content: center; }
+#dr-poster-icc .i-box span { font-family: "Lora", serif; font-weight: 600; font-size: 92px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: -.02em; }
+#dr-poster-icc .i-rows { position: absolute; left: 120px; right: 80px; top: 480px; bottom: var(--pied-h); display: flex; flex-direction: column; justify-content: space-evenly; }
+#dr-poster-icc .i-row { display: grid; grid-template-columns: 290px minmax(0, 1fr); align-items: start; }
+#dr-poster-icc .i-time { font-weight: 600; font-size: 29px; letter-spacing: .01em; }
+#dr-poster-icc .i-dur { font-family: "Lora", serif; font-style: italic; font-weight: 500; font-size: 21px; margin-top: 4px; }
+#dr-poster-icc .i-name { color: var(--icc-gold); font-weight: 600; font-size: 29px; text-transform: uppercase; letter-spacing: .01em; line-height: 1.2; }
+#dr-poster-icc .i-who { font-weight: 700; font-size: 24px; margin-top: 4px; }
+#dr-poster-icc .i-dense .i-time, #dr-poster-icc .i-dense .i-name { font-size: 24px; } #dr-poster-icc .i-dense .i-who { font-size: 20px; } #dr-poster-icc .i-dense .i-dur { font-size: 18px; }
+#dr-poster-icc .i-foot { position: absolute; left: 120px; right: 80px; bottom: 60px; }
+#dr-poster-icc .i-foot b { display: block; color: var(--icc-gold); font-weight: 600; font-size: 22px; text-transform: uppercase; margin-bottom: 14px; }
+#dr-poster-icc .i-foot div { color: var(--icc-band); font-weight: 400; font-size: 24px; letter-spacing: .04em; line-height: 1.35; }
+[data-only][hidden] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Déroulé</h1>
+    <p class="page-sub">Le programme horaire du culte, prêt à partager en image. Les responsables sont repris du planning quand une étape est liée à un rôle.</p>
+  </div>
+  <div class="actions">
+    <span class="dr-save-state" id="dr-state" aria-live="polite">{{ 'Enregistré' if deja_enregistre else 'Pas encore enregistré pour cette date' }}</span>
+    <button class="btn" type="button" id="dr-save">Enregistrer</button>
+    <button class="btn btn-acc" type="button" id="dr-export">{{ icon('download') }} Télécharger l'image</button>
+  </div>
+</div>
+
+<div class="dr-layout">
+  <div>
+    <fieldset style="margin-bottom:18px">
+      <legend>Modèle</legend>
+      <div class="fchips" role="group" aria-label="Modèle de déroulé">
+        <button type="button" class="fchip" data-modele="ejp">Modèle EJP</button>
+        <button type="button" class="fchip" data-modele="icc">Modèle ICC</button>
+      </div>
+    </fieldset>
+    <div class="row2">
+      <div class="field">
+        <label class="label" for="dr-date">Date du culte</label>
+        <input class="input" type="date" id="dr-date" value="{{ jour.isoformat() }}">
+        {% if recents %}<span class="hint">Récents : {% for d in recents %}<a class="link" href="/deroule?date_str={{ d.isoformat() }}" style="margin-right:8px">{{ d.day }} {{ MOIS_COURTS[d.month] }}</a>{% endfor %}</span>{% endif %}
+      </div>
+      <div class="field">
+        <label class="label" for="dr-sous-titre">Type de culte</label>
+        <input class="input" id="dr-sous-titre" maxlength="40">
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="dr-titre">Titre</label>
+      <input class="input" id="dr-titre" maxlength="60">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <span class="label"><span data-only="ejp">Couleur</span><span data-only="icc">Couleur des bandeaux</span></span>
+        <div class="dr-colors" id="dr-colors" role="group" aria-label="Couleur du déroulé">
+          <button type="button" class="dr-color" data-c="#8B5E3C" style="background:#8B5E3C" aria-label="Brun EJP"></button>
+          {% for cle, c in COULEURS.items() %}<button type="button" class="dr-color" data-c="{{ c.acc }}" style="background:{{ c.acc }}" aria-label="{{ c.nom }}"></button>{% endfor %}
+          <button type="button" class="dr-color" data-c="#111111" style="background:#111111" aria-label="Noir"></button>
+          <input type="color" class="dr-color-input" id="dr-color-custom" aria-label="Autre couleur">
+        </div>
+      </div>
+      <div class="field" data-only="icc">
+        <label class="label" for="dr-color2">Couleur des titres</label>
+        <div class="dr-colors">
+          <button type="button" class="dr-color dr-color2" data-c="#9E7432" style="background:#9E7432" aria-label="Or"></button>
+          <button type="button" class="dr-color dr-color2" data-c="#0F3D26" style="background:#0F3D26" aria-label="Vert"></button>
+          <button type="button" class="dr-color dr-color2" data-c="#111111" style="background:#111111" aria-label="Noir"></button>
+          <input type="color" class="dr-color-input" id="dr-color2" aria-label="Autre couleur des titres">
+        </div>
+      </div>
+      <div class="field" data-only="ejp">
+        <span class="label">Photo du bas</span>
+        <div class="dr-photo">
+          <img id="dr-photo-thumb" alt="" hidden>
+          <label class="btn btn-sm">{{ icon('image', 'i-sm') }} Choisir une photo<input type="file" accept="image/*" id="dr-photo-input" hidden></label>
+          <button type="button" class="btn btn-sm btn-quiet" id="dr-photo-remove" hidden>Retirer</button>
+        </div>
+      </div>
+    </div>
+
+    <div data-only="icc">
+      <div class="field"><label class="label" for="dr-pied-titre">Bas de page : titre</label><input class="input" id="dr-pied-titre" maxlength="60" placeholder="Famille de disciples en service"></div>
+      <div class="field"><label class="label" for="dr-pied-lignes">Bas de page : lignes</label><textarea class="input" id="dr-pied-lignes" rows="3" placeholder="Hommes : …&#10;Femmes : …"></textarea><span class="hint">Une ligne par équipe. Laissez vide pour masquer le bas de page.</span></div>
+    </div>
+    <h2 style="font-size:26px;margin:18px 0 14px">Étapes</h2>
+    <ul class="dr-steps" id="dr-steps"></ul>
+    <div class="actions" style="margin-top:16px">
+      <button class="btn btn-sm" type="button" id="dr-add">{{ icon('plus', 'i-sm') }} Ajouter une étape</button>
+    </div>
+  </div>
+
+  <div class="dr-preview-wrap">
+    <div class="dr-preview-frame" id="dr-frame">
+      <div id="dr-scale">
+        <div id="dr-poster" aria-label="Aperçu du déroulé">
+          <div class="p-head">
+            <div class="p-title" id="p-title"></div>
+            <div class="p-sub" id="p-sub"></div>
+            <div class="p-date" id="p-date"></div>
+          </div>
+          <div class="p-col"></div>
+          <img class="p-mark" src="/static/logo-mark.png" alt="">
+          <div class="p-rows" id="p-rows"></div>
+          <div class="p-photo" id="p-photo"></div>
+        </div>
+        <div id="dr-poster-icc" aria-label="Aperçu du déroulé ICC" hidden>
+          <div class="band l1"></div><div class="band l2"></div><div class="band r1"></div><div class="band r2"></div>
+          <div class="i-head">
+            <img class="i-logo" src="/static/brand/icc-noir.png" alt="">
+            <div class="i-church" id="icc-church"></div>
+            <div class="i-word">Deroulé</div>
+          </div>
+          <div class="i-box"><span id="icc-box"></span></div>
+          <div class="i-rows" id="icc-rows"></div>
+          <div class="i-foot" id="icc-foot"></div>
+        </div>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:10px">Image JPEG de 2160 × 3100 pixels, idéale pour WhatsApp et Instagram.</p>
+  </div>
+</div>
+
+<template id="dr-step-tpl">
+  <li class="dr-step">
+    <div><input class="input" type="time" data-k="debut" aria-label="Heure de début"><small data-auto></small></div>
+    <div><input class="input" type="number" min="0" max="600" step="5" data-k="duree" aria-label="Durée en minutes"><small>min</small></div>
+    <div class="grow">
+      <input class="input" data-k="titre" placeholder="Nom de l'étape" maxlength="80" aria-label="Nom de l'étape">
+      <div class="two">
+        <select class="select" data-k="role_id" aria-label="Rôle du planning">
+          <option value="">Pas de rôle</option>
+          {% for r in roles %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}
+        </select>
+        <input class="input" data-k="personne" placeholder="Responsable" maxlength="80" aria-label="Responsable">
+      </div>
+    </div>
+    <div class="ops">
+      <button type="button" class="icon-btn" data-op="up" aria-label="Monter">{{ icon('up') }}</button>
+      <button type="button" class="icon-btn" data-op="down" aria-label="Descendre">{{ icon('chevron-down') }}</button>
+      <button type="button" class="icon-btn danger" data-op="del" aria-label="Supprimer l'étape">{{ icon('trash') }}</button>
+    </div>
+  </li>
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/vendor/html-to-image.js"></script>
+<script>
+(function () {
+  "use strict";
+  var JOUR = {{ jour.isoformat()|tojson }};
+  var AFFECT = {{ affectations|tojson }};
+  var state = {{ data|tojson }};
+  // Gabarit de chaque modèle : dernier déroulé enregistré avec ce modèle, sinon horaires et moments par défaut
+  var GABARITS = {{ gabarits|tojson }};
+  var memo = {};
+  if (!state.etapes) state.etapes = [];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var poster = $("dr-poster"), list = $("dr-steps"), tpl = $("dr-step-tpl");
+  var dirty = false;
+
+  function mix(hex, pct) {
+    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    var f = function (c) { return Math.round(c * pct + 255 * (1 - pct)); };
+    return "rgb(" + f(r) + "," + f(g) + "," + f(b) + ")";
+  }
+  function toMin(t) { if (!t) return null; var p = t.split(":"); return (+p[0]) * 60 + (+p[1]); }
+  function fmt(m) { m = ((m % 1440) + 1440) % 1440; var h = Math.floor(m / 60), mi = m % 60; return h + "H" + (mi < 10 ? "0" : "") + mi; }
+  function fmtInput(m) { m = ((m % 1440) + 1440) % 1440; var h = Math.floor(m / 60), mi = m % 60; return (h < 10 ? "0" : "") + h + ":" + (mi < 10 ? "0" : "") + mi; }
+  function dateFr(iso) { var p = iso.split("-"); return p[2] + "/" + p[1] + "/" + p[0]; }
+  function personne(e) { return (e.personne || "").trim() || (e.role_id && AFFECT[e.role_id]) || ""; }
+
+  function horaires() {
+    var cur = null;
+    return state.etapes.map(function (e) {
+      var d = toMin(e.debut);
+      var auto = d === null;
+      if (auto) d = cur === null ? 0 : cur;
+      var f = d + (+e.duree || 0);
+      cur = f;
+      return { debut: d, fin: f, auto: auto };
+    });
+  }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function fmtIcc(m) { m = ((m % 1440) + 1440) % 1440; return pad2(Math.floor(m / 60)) + "H" + pad2(m % 60); }
+
+  function renderIcc(h) {
+    var el = $("dr-poster-icc");
+    el.style.setProperty("--icc-band", state.couleur || "#0F3D26");
+    el.style.setProperty("--icc-gold", state.couleur2 || "#9E7432");
+    el.style.setProperty("--icc-hl", "#FEF6BB");
+    $("icc-church").textContent = state.titre || "";
+    var box = $("icc-box"); box.textContent = (state.sous_titre || "Culte") + " du " + dateFr(JOUR); box.style.fontSize = "92px";
+    for (var fs = 92; fs > 40 && box.getBoundingClientRect().width / currentScale() > 800; fs -= 2) box.style.fontSize = fs + "px";
+    var lignes = (state.pied_lignes || []).filter(function (l) { return l.trim(); });
+    var foot = $("icc-foot"); foot.innerHTML = "";
+    if (state.pied_titre || lignes.length) {
+      var t = document.createElement("b"); t.textContent = state.pied_titre || ""; foot.appendChild(t);
+      lignes.forEach(function (l) { var d = document.createElement("div"); d.textContent = l; foot.appendChild(d); });
+    }
+    el.style.setProperty("--pied-h", (state.pied_titre || lignes.length) ? (120 + lignes.length * 34) + "px" : "60px");
+    var rows = $("icc-rows"); rows.innerHTML = "";
+    rows.classList.toggle("i-dense", state.etapes.length > 9);
+    state.etapes.forEach(function (e, i) {
+      var row = document.createElement("div"); row.className = "i-row";
+      var a = document.createElement("div");
+      var t1 = document.createElement("div"); t1.className = "i-time"; t1.textContent = fmtIcc(h[i].debut) + " - " + fmtIcc(h[i].fin);
+      var t2 = document.createElement("div"); t2.className = "i-dur"; t2.textContent = "Durée " + pad2(+e.duree || 0) + " min";
+      a.appendChild(t1); a.appendChild(t2);
+      var b = document.createElement("div");
+      var n = document.createElement("div"); n.className = "i-name"; n.textContent = e.titre || "";
+      var w = document.createElement("div"); w.className = "i-who"; w.textContent = personne(e);
+      b.appendChild(n); b.appendChild(w); row.appendChild(a); row.appendChild(b); rows.appendChild(row);
+    });
+  }
+
+  function activePoster() { return state.modele === "icc" ? $("dr-poster-icc") : poster; }
+
+  function renderPoster() {
+    var icc = state.modele === "icc";
+    poster.hidden = icc; $("dr-poster-icc").hidden = !icc;
+    document.querySelectorAll("[data-only]").forEach(function (el) { el.hidden = el.dataset.only !== (icc ? "icc" : "ejp"); });
+    document.querySelectorAll("[data-modele]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.modele === (icc ? "icc" : "ejp"))); });
+    document.querySelectorAll(".dr-color2").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.c.toLowerCase() === (state.couleur2 || "").toLowerCase())); });
+    $("dr-color2").value = state.couleur2 || "#9E7432";
+    var c = state.couleur || "#8B5E3C";
+    poster.style.setProperty("--dr", c);
+    poster.style.setProperty("--dr-bg-1", mix(c, 0.09));
+    poster.style.setProperty("--dr-bg-2", mix(c, 0.035));
+    poster.style.setProperty("--photo-h", state.photo ? "200px" : "0px");
+    var pt = $("p-title"); pt.textContent = state.titre || ""; pt.style.fontSize = "92px";
+    for (var fs = 92; fs > 40 && pt.getBoundingClientRect().width / currentScale() > 930; fs -= 2) pt.style.fontSize = fs + "px";
+    $("p-sub").textContent = state.sous_titre || "";
+    $("p-date").textContent = dateFr(JOUR);
+    $("p-photo").style.backgroundImage = state.photo ? "url(" + state.photo + ")" : "none";
+    var h = horaires();
+    if (icc) renderIcc(h);
+    var rows = $("p-rows"); rows.innerHTML = "";
+    rows.classList.toggle("p-dense", state.etapes.length > 7);
+    state.etapes.forEach(function (e, i) {
+      var row = document.createElement("div"); row.className = "p-row";
+      var t = document.createElement("div"); t.className = "p-time";
+      t.textContent = fmt(h[i].debut) + " - " + fmt(h[i].fin);
+      var s = document.createElement("span"); s.textContent = (+e.duree || 0) + "MIN"; t.appendChild(s);
+      var l = document.createElement("div"); l.className = "p-line";
+      var b = document.createElement("div");
+      var nm = document.createElement("div"); nm.className = "p-name"; nm.textContent = e.titre || "";
+      var w = document.createElement("div"); w.className = "p-who"; w.textContent = personne(e);
+      b.appendChild(nm); b.appendChild(w);
+      row.appendChild(t); row.appendChild(l); row.appendChild(b); rows.appendChild(row);
+    });
+    var autos = list.querySelectorAll("[data-auto]");
+    h.forEach(function (x, i) {
+      if (!autos[i]) return;
+      autos[i].textContent = x.auto ? "auto : " + fmtInput(x.debut) : "";
+      var inp = autos[i].previousElementSibling; if (x.auto) inp.placeholder = fmtInput(x.debut);
+    });
+    document.querySelectorAll(".dr-color:not(.dr-color2)").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.c.toLowerCase() === c.toLowerCase())); });
+    $("dr-color-custom").value = c;
+    var th = $("dr-photo-thumb"); th.hidden = !state.photo; if (state.photo) th.src = state.photo;
+    $("dr-photo-remove").hidden = !state.photo;
+  }
+
+  function renderSteps() {
+    list.innerHTML = "";
+    state.etapes.forEach(function (e, i) {
+      var li = tpl.content.firstElementChild.cloneNode(true);
+      li.querySelectorAll("[data-k]").forEach(function (inp) {
+        var k = inp.dataset.k;
+        inp.value = e[k] == null ? "" : e[k];
+        if (k === "personne" && e.role_id && AFFECT[e.role_id]) inp.placeholder = AFFECT[e.role_id] + " (planning)";
+        inp.addEventListener("input", function () {
+          e[k] = k === "duree" ? (parseInt(inp.value, 10) || 0) : k === "role_id" ? (inp.value ? parseInt(inp.value, 10) : null) : inp.value;
+          if (k === "role_id") { var p = li.querySelector('[data-k="personne"]'); p.placeholder = e.role_id && AFFECT[e.role_id] ? AFFECT[e.role_id] + " (planning)" : "Responsable"; }
+          changed();
+        });
+      });
+      li.querySelectorAll("[data-op]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var op = b.dataset.op;
+          if (op === "del") state.etapes.splice(i, 1);
+          if (op === "up" && i > 0) state.etapes.splice(i - 1, 0, state.etapes.splice(i, 1)[0]);
+          if (op === "down" && i < state.etapes.length - 1) state.etapes.splice(i + 1, 0, state.etapes.splice(i, 1)[0]);
+          renderSteps(); changed();
+        });
+      });
+      list.appendChild(li);
+    });
+  }
+
+  function changed() { dirty = true; $("dr-state").textContent = "Modifications non enregistrées"; renderPoster(); }
+
+  function currentScale() { var m = /scale\(([\d.]+)\)/.exec($("dr-scale").style.transform || ""); return m ? parseFloat(m[1]) : 1; }
+
+  function fit() {
+    var w = $("dr-frame").clientWidth;
+    $("dr-scale").style.transform = "scale(" + (w / 1080) + ")";
+  }
+
+  function save() {
+    $("dr-state").textContent = "Enregistrement…";
+    return fetch("/deroule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: JOUR, data: state }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.ok) throw new Error(j.erreur || "Erreur"); dirty = false; $("dr-state").textContent = "Enregistré"; })
+      .catch(function () { $("dr-state").textContent = "Échec de l'enregistrement. Réessayez."; });
+  }
+
+  $("dr-titre").value = state.titre || ""; $("dr-sous-titre").value = state.sous_titre || "";
+  $("dr-titre").addEventListener("input", function (ev) { state.titre = ev.target.value; changed(); });
+  $("dr-sous-titre").addEventListener("input", function (ev) { state.sous_titre = ev.target.value; changed(); });
+  $("dr-date").addEventListener("change", function (ev) {
+    if (!ev.target.value) return;
+    var go = function () { location.href = "/deroule?date_str=" + ev.target.value; };
+    dirty ? save().then(go) : go();
+  });
+  document.querySelectorAll(".dr-color:not(.dr-color2)").forEach(function (b) { b.addEventListener("click", function () { state.couleur = b.dataset.c; changed(); }); });
+  document.querySelectorAll(".dr-color2").forEach(function (b) { b.addEventListener("click", function () { state.couleur2 = b.dataset.c; changed(); }); });
+  $("dr-color2").addEventListener("input", function (ev) { state.couleur2 = ev.target.value; changed(); });
+  document.querySelectorAll("[data-modele]").forEach(function (b) { b.addEventListener("click", function () {
+    var m = b.dataset.modele; if (m === state.modele) return;
+    memo[state.modele] = JSON.parse(JSON.stringify(state));      // revenir au modèle précédent retrouve ses modifications
+    var photo = state.photo;
+    state = JSON.parse(JSON.stringify(memo[m] || GABARITS[m]));  // étapes, horaires, couleurs et pied du modèle choisi
+    state.modele = m;
+    if (photo && !state.photo) state.photo = photo;
+    $("dr-titre") && ($("dr-titre").value = state.titre || "");
+    $("dr-sous-titre") && ($("dr-sous-titre").value = state.sous_titre || "");
+    $("dr-pied-titre").value = state.pied_titre || ""; $("dr-pied-lignes").value = (state.pied_lignes || []).join("\n");
+    renderSteps();
+    changed();
+  }); });
+  $("dr-pied-titre").value = state.pied_titre || ""; $("dr-pied-lignes").value = (state.pied_lignes || []).join("\n");
+  $("dr-pied-titre").addEventListener("input", function (ev) { state.pied_titre = ev.target.value; changed(); });
+  $("dr-pied-lignes").addEventListener("input", function (ev) { state.pied_lignes = ev.target.value.split("\n").slice(0, 6); changed(); });
+  $("dr-color-custom").addEventListener("input", function (ev) { state.couleur = ev.target.value; changed(); });
+  $("dr-add").addEventListener("click", function () { state.etapes.push({ debut: "", duree: 10, titre: "", role_id: null, personne: "" }); renderSteps(); changed(); var ins = list.querySelectorAll('[data-k="titre"]'); if (ins.length) ins[ins.length - 1].focus(); });
+  $("dr-save").addEventListener("click", save);
+
+  $("dr-photo-input").addEventListener("change", function (ev) {
+    var f = ev.target.files && ev.target.files[0]; if (!f) return;
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function () {
+      var W = 1600, s = Math.min(1, W / img.width), cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      state.photo = cv.toDataURL("image/jpeg", 0.8); URL.revokeObjectURL(url); changed();
+    };
+    img.src = url;
+  });
+  $("dr-photo-remove").addEventListener("click", function () { state.photo = ""; changed(); });
+
+  $("dr-export").addEventListener("click", function () {
+    var btn = this; btn.classList.add("is-loading");
+    var done = function () { btn.classList.remove("is-loading"); };
+    var run = function () {
+      return window.htmlToImage.toJpeg(activePoster(), { quality: 0.92, backgroundColor: "#ffffff", pixelRatio: 2, cacheBust: true, width: 1080, height: 1550, style: { transform: "none" } })
+        .then(function (data) { var a = document.createElement("a"); a.href = data; a.download = "deroule-" + JOUR + ".jpg"; document.body.appendChild(a); a.click(); a.remove(); });
+    };
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(save).then(run).then(done).catch(function () { done(); $("dr-state").textContent = "L'image n'a pas pu être créée. Réessayez."; });
+  });
+
+  window.addEventListener("beforeunload", function (ev) { if (dirty) { ev.preventDefault(); ev.returnValue = ""; } });
+  window.addEventListener("resize", fit);
+  fit(); renderSteps(); renderPoster();
+  window.addEventListener("resize", renderPoster);
+})();
+</script>
+{% endblock %}

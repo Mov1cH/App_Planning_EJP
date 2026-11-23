@@ -1,15 +1,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111014" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Planning EJP">
-<link rel="icon" type="image/png" href="/static/favicon-32.png">
-<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-<link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/css/app.css?v=3">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Planning">
+{%- set _cle = couleur_cle(request) %}
+<link rel="icon" type="image/svg+xml" href="/static/brand/logo/{{ _cle }}.svg?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/brand/logo/{{ _cle }}-32.png?v=4">
+<link rel="apple-touch-icon" href="/static/brand/logo/{{ _cle }}-180.png?v=4">
+<link rel="manifest" href="/manifest.webmanifest?c={{ _cle }}">
+<link rel="preload" href="/static/fonts/interdisplay-800.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="/static/css/app.css?v=23">

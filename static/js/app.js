@@ -99,7 +99,7 @@
     var update = function () {
       var n = form.querySelectorAll("input[type=checkbox]:checked").length;
       out.textContent = n + " / " + quota;
-      out.className = "badge " + (n === quota ? "badge-success" : n < quota ? "badge-warning" : "badge-accent");
+      out.className = "counter " + (n >= quota ? "ok" : "low");
     };
     form.addEventListener("change", update);
     update();

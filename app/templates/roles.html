@@ -3,61 +3,53 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <span class="eyebrow">Coordination</span>
-    <h1>Rôles du culte</h1>
-    <p>Les postes à pourvoir chaque dimanche. L'ordre définit aussi la priorité lors de la génération du planning.</p>
+    <h1 class="page-title">Rôles</h1>
+    <p class="page-sub">Les postes à pourvoir chaque dimanche, dans l'ordre où ils sont attribués par le planning.</p>
   </div>
 </div>
+{% include "_equipe_tabs.html" %}
 
-<div class="grid grid-aside">
-  <section class="card sticky" aria-labelledby="ajout-titre">
-    <div class="card-head"><h2 id="ajout-titre">Nouveau rôle</h2></div>
-    <form class="card-body" action="/roles" method="post">
-      <div class="field">
-        <label class="label" for="nom">Nom du rôle <span class="muted">*</span></label>
-        <input class="input" id="nom" name="nom" placeholder="Ex. Accueil, Louange…" required>
-      </div>
-      <div class="field">
-        <label class="label" for="quota">Personnes nécessaires</label>
-        <input class="input" type="number" id="quota" name="quota" value="1" min="1" max="50" inputmode="numeric" required>
-        <span class="hint">Combien de personnes pour ce rôle à chaque culte.</span>
-      </div>
-      <button class="btn btn-primary btn-block" type="submit" data-loading>{{ icon('plus') }} Créer le rôle</button>
-    </form>
-  </section>
-
-  <section class="card" aria-labelledby="liste-titre">
-    <div class="card-head"><h2 id="liste-titre">Rôles <span class="badge badge-ink">{{ roles|length }}</span></h2></div>
+<div class="layout-side">
+  <section aria-labelledby="liste-titre">
+    <h2 id="liste-titre" class="sr-only">Liste des rôles</h2>
     {% if roles %}
-    <ul class="list">
+    <ul class="rows">
       {% for role in roles %}
       {% set n = effectifs.get(role.id, 0) %}
-      <li class="list-item">
-        <span class="avatar" aria-hidden="true" title="Position {{ role.ordre }}">{{ loop.index }}</span>
+      <li>
         <div class="grow">
           <div class="title">{{ role.nom }}</div>
           <div class="meta">
-            <span class="badge">{{ role.quota }} par culte</span>
-            {% if n == 0 %}<span class="badge badge-danger">Aucun membre</span>
-            {% elif n < role.quota * 2 %}<span class="badge badge-warning">{{ n }} membre{{ 's' if n > 1 }} · rotation faible</span>
-            {% else %}<span class="badge badge-success">{{ n }} membres</span>{% endif %}
+            {{ role.quota }} personne{{ 's' if role.quota > 1 }} par culte,
+            {% if n == 0 %}<span style="color:var(--alert);font-weight:600">aucun membre ne peut le tenir</span>
+            {% elif n < role.quota * 2 %}<span style="color:var(--alert);font-weight:600">{{ n }} membre{{ 's' if n > 1 }} seulement</span>
+            {% else %}{{ n }} membres possibles{% endif %}
           </div>
         </div>
-        <a class="icon-btn" href="/roles/{{ role.id }}/modifier" aria-label="Modifier {{ role.nom }}">{{ icon('pencil') }}</a>
-        <form action="/roles/{{ role.id }}/supprimer" method="post"
-              data-confirm="Le rôle « {{ role.nom }} » sera retiré des membres, du planning et des indisponibilités." data-confirm-title="Supprimer ce rôle ?">
-          <button class="icon-btn danger" type="submit" aria-label="Supprimer {{ role.nom }}">{{ icon('trash') }}</button>
-        </form>
+        <span class="ops">
+          <a class="icon-btn" href="/roles/{{ role.id }}/modifier" aria-label="Modifier {{ role.nom }}">{{ icon('pencil') }}</a>
+          <form action="/roles/{{ role.id }}/supprimer" method="post" data-confirm="Le rôle « {{ role.nom }} » sera retiré des membres, du planning et des absences." data-confirm-title="Supprimer ce rôle ?">
+            <button class="icon-btn danger" type="submit" aria-label="Supprimer {{ role.nom }}">{{ icon('trash') }}</button>
+          </form>
+        </span>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <div class="empty">
-      {{ icon('roles') }}
-      <h3>Aucun rôle</h3>
-      <p>Créez les postes à pourvoir chaque dimanche.</p>
-    </div>
+    <div class="empty"><h3>Aucun rôle</h3><p>Créez les postes à pourvoir chaque dimanche.</p></div>
     {% endif %}
   </section>
+
+  <aside class="panel" aria-labelledby="ajout-titre">
+    <h2 id="ajout-titre">Nouveau rôle</h2>
+    <form action="/roles" method="post">
+      <div class="field"><label class="label" for="nom">Nom du rôle</label><input class="input" id="nom" name="nom" placeholder="Accueil, louange…" required></div>
+      <div class="field">
+        <label class="label" for="quota">Personnes par culte</label>
+        <input class="input" type="number" id="quota" name="quota" value="1" min="1" max="50" inputmode="numeric" required>
+      </div>
+      <button class="btn btn-dark btn-block" type="submit" data-loading>Créer le rôle</button>
+    </form>
+  </aside>
 </div>
 {% endblock %}

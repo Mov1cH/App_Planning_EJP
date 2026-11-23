@@ -1,0 +1,23 @@
+# Ne pas envoyer sur Vercel
+venv/
+.venv/
+__pycache__/
+_ancienne_version/
+*.db
+*.db.bak
+.env
+*.tgz
+*.zip
+.DS_Store
+render.yaml
+Procfile
+start.sh
+check_db.py
+test_register.py
+update_db.py
+import_membres.py
+seed_indisponibilites.py
+.env.local
+.env*.local
+.vercel
+docs/

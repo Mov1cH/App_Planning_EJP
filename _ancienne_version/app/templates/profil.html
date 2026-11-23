@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Profil - Planning EJP{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <h2 class="h3 mb-4 text-gray-800">Mon Profil</h2>
+    
+    {% if succes %}
+    <div class="alert alert-success shadow-sm">{{ succes }}</div>
+    {% endif %}
+    
+    {% if erreur %}
+    <div class="alert alert-danger shadow-sm">{{ erreur }}</div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Colonne Informations Générales -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h6 class="m-0 font-weight-bold text-primary">Informations de l'église</h6>
+                </div>
+                <div class="card-body">
+                    <form action="/profil/modifier" method="POST">
+                        <div class="mb-3">
+                            <label for="email" class="form-label text-muted small fw-bold">Adresse Email de connexion (Non modifiable)</label>
+                            <input type="email" class="form-control bg-light" id="email" value="{{ current_eglise.email }}" disabled>
+                        </div>
+                        <div class="mb-4">
+                            <label for="nom_eglise" class="form-label text-muted small fw-bold">Nom de l'église</label>
+                            <input type="text" class="form-control" id="nom_eglise" name="nom_eglise" value="{{ current_eglise.nom_eglise }}" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Mettre à jour les informations</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Colonne Mot de passe -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h6 class="m-0 font-weight-bold text-primary">Sécurité et Mot de passe</h6>
+                </div>
+                <div class="card-body">
+                    <form action="/profil/mot-de-passe" method="POST">
+                        <div class="mb-3">
+                            <input type="password" class="form-control" id="mot_de_passe_actuel" name="mot_de_passe_actuel" placeholder="Mot de passe actuel" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="password" class="form-control" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" placeholder="Nouveau mot de passe" required>
+                        </div>
+                        <div class="mb-4">
+                            <input type="password" class="form-control" id="confirmation_mot_de_passe" name="confirmation_mot_de_passe" placeholder="Confirmer le nouveau mot de passe" required>
+                        </div>
+                        <button type="submit" class="btn btn-warning">Changer mon mot de passe</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

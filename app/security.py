@@ -71,3 +71,57 @@ class RateLimiter:
 
 login_limiter = RateLimiter(max_attempts=8, window_seconds=10 * 60)
 email_limiter = RateLimiter(max_attempts=5, window_seconds=60 * 60)
+
+
+
+# ---------------------------------------------------------------------------
+# Code de vérification de l'adresse email (6 chiffres, 30 min, 5 essais)
+# ---------------------------------------------------------------------------
+import hashlib as _hashlib
+import hmac as _hmac
+import secrets as _secrets
+import time as _time
+
+CODE_DUREE = 30 * 60
+CODE_ESSAIS = 5
+CODE_RENVOI_MIN = 60  # secondes entre deux envois
+
+
+def _empreinte(eglise_id: int, code: str) -> str:
+    from . import config as _config
+    return _hmac.new(_config.SECRET_KEY.encode(), f"{eglise_id}:{code}".encode(), _hashlib.sha256).hexdigest()
+
+
+def nouveau_code(eglise_id: int):
+    """Retourne (code en clair à envoyer, valeur à stocker)."""
+    code = f"{_secrets.randbelow(10 ** 6):06d}"
+    return code, f"{_empreinte(eglise_id, code)}|{int(_time.time())}|0"
+
+
+def lire_code(stocke: str):
+    try:
+        empreinte, emis, essais = (stocke or "").split("|")
+        return empreinte, int(emis), int(essais)
+    except ValueError:
+        return None, 0, CODE_ESSAIS
+
+
+def verifier_code(eglise_id: int, stocke: str, saisi: str):
+    """Retourne (ok, nouvelle valeur à stocker, raison)."""
+    empreinte, emis, essais = lire_code(stocke)
+    if not empreinte:
+        return False, stocke, "absent"
+    if _time.time() - emis > CODE_DUREE:
+        return False, stocke, "expire"
+    if essais >= CODE_ESSAIS:
+        return False, stocke, "bloque"
+    saisi = "".join(ch for ch in (saisi or "") if ch.isdigit())
+    if len(saisi) == 6 and _hmac.compare_digest(empreinte, _empreinte(eglise_id, saisi)):
+        return True, None, "ok"
+    return False, f"{empreinte}|{emis}|{essais + 1}", ("bloque" if essais + 1 >= CODE_ESSAIS else "faux")
+
+
+def peut_renvoyer(stocke: str) -> int:
+    """Secondes restantes avant de pouvoir renvoyer un code (0 = possible)."""
+    _, emis, _ = lire_code(stocke)
+    return max(0, int(CODE_RENVOI_MIN - (_time.time() - emis))) if emis else 0

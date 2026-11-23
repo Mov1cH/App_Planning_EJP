@@ -1,120 +1,91 @@
 {% extends "base.html" %}
-{% block title %}Tableau de bord{% endblock %}
-{% block content %}
-<div class="page-head">
-  <div>
-    <span class="eyebrow">Coordination</span>
-    <h1>Tableau de bord</h1>
-    <p>Voici ce qui se prépare pour {{ current_eglise.nom_eglise }}.</p>
-  </div>
+{% block title %}Accueil{% endblock %}
+{% block page_class %}page-flush{% endblock %}
+
+{% block topline %}
+<div class="topline">
+  <span class="who">{{ current_eglise.nom_eglise }}</span>
+  <span class="when hide-sm">{{ aujourd_hui|date_fr|replace(' ' ~ aujourd_hui.year, '') }}</span>
   <div class="actions">
-    <a class="btn" href="/indisponibilites">{{ icon('calendar-x') }} Ajouter une indispo</a>
-    <a class="btn btn-primary" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">{{ icon('calendar') }} Ouvrir le planning</a>
+    <a class="btn" href="/indisponibilites">Signaler une absence</a>
+    <a class="btn btn-acc" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">Planning de {{ MOIS_FR[dimanche.month]|lower }}</a>
   </div>
 </div>
+{% endblock %}
 
-<div class="stats">
-  <a class="stat" href="/membres">
-    <span class="stat-label">{{ icon('users', 'i-sm') }} Membres</span>
-    <div class="stat-value">{{ stats.membres }}</div>
-  </a>
-  <a class="stat" href="/roles">
-    <span class="stat-label">{{ icon('roles', 'i-sm') }} Rôles</span>
-    <div class="stat-value">{{ stats.roles }}</div>
-  </a>
-  <a class="stat" href="/indisponibilites">
-    <span class="stat-label">{{ icon('calendar-x', 'i-sm') }} Indispos à venir</span>
-    <div class="stat-value">{{ stats.indispos }}</div>
-  </a>
-  <a class="stat" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}">
-    <span class="stat-label">{{ icon('check-circle', 'i-sm') }} {{ MOIS_FR[planning.mois] }} couvert</span>
-    <div class="stat-value">{% if planning.est_vide %}—{% else %}{{ planning.taux_couverture }} %{% endif %}</div>
-    {% if not planning.est_vide %}
-    <div class="meter{% if planning.taux_couverture < 100 %} is-warn{% endif %}" role="img" aria-label="{{ planning.taux_couverture }} % des places pourvues"><span style="width: {{ planning.taux_couverture }}%"></span></div>
+{% block content %}
+{% set complet = equipe and not (equipe|selectattr('1.manque')|list) %}
+{% set manquants = equipe|selectattr('1.manque')|list|length %}
+<section class="hero" aria-labelledby="prochain">
+  <div class="hero-block">
+    <p class="hero-kicker">
+      {% if jours_restants == 0 %}Culte aujourd'hui{% elif jours_restants == 1 %}Prochain culte, demain{% else %}Prochain culte, dans {{ jours_restants }} jours{% endif %}
+    </p>
+    <h1 id="prochain" class="sr-only">Dimanche {{ dimanche.day }} {{ MOIS_FR[dimanche.month]|lower }}</h1>
+    <div class="hero-day" aria-hidden="true">{{ '%02d'|format(dimanche.day) }}</div>
+    <div class="hero-month" aria-hidden="true">{{ MOIS_FR[dimanche.month] }}</div>
+    <p class="hero-note">
+      {% if planning.est_vide or not equipe %}Le planning de {{ MOIS_FR[dimanche.month]|lower }} n'est pas encore prêt. Générez-le en tenant compte des absences.
+      {% elif complet %}Toute l'équipe est en place.
+      {% else %}{{ manquants }} rôle{{ 's' if manquants > 1 }} sans personne pour l'instant.{% endif %}
+    </p>
+    {% if not (planning.est_vide or not equipe) %}
+    <a class="btn show-sm" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">Voir le planning</a>
     {% endif %}
-  </a>
-</div>
-
-<div class="grid grid-dash">
-  <section class="card hero" aria-labelledby="prochain-titre">
-    <div class="hero-head">
-      <div>
-        <span class="eyebrow">{{ icon('flame', 'i-sm') }} Prochain culte</span>
-        <h2 id="prochain-titre">{{ dimanche|date_fr }}</h2>
-      </div>
-    </div>
     {% if planning.est_vide or not equipe %}
-      <div class="empty">
-        {{ icon('sparkles') }}
-        <h3>Le planning de {{ MOIS_FR[dimanche.month]|lower }} n'est pas encore prêt</h3>
-        <p>Générez-le automatiquement : les indisponibilités et l'équité entre membres sont prises en compte.</p>
-        {% if stats.membres %}
-        <form action="/generer_planning" method="post">
-          <input type="hidden" name="annee" value="{{ dimanche.year }}">
-          <input type="hidden" name="mois" value="{{ dimanche.month }}">
-          <button class="btn btn-accent" type="submit" data-loading>{{ icon('sparkles') }} Générer {{ MOIS_FR[dimanche.month]|lower }}</button>
-        </form>
-        {% else %}
-        <a class="btn btn-primary" href="/membres">{{ icon('plus') }} Ajouter des membres</a>
-        {% endif %}
-      </div>
-    {% else %}
-      <ul class="team">
-        {% for role, cell in equipe %}
-        <li>
-          <span class="role">{{ role.nom }}</span>
-          <span class="who">
-            {% if cell.noms %}{{ cell.noms|join(', ') }}{% endif %}
-            {% if cell.manque %}<span class="slot-missing">{{ icon('alert', 'i-sm') }} {{ cell.manque }} à pourvoir</span>{% endif %}
-          </span>
-        </li>
-        {% endfor %}
-      </ul>
-      <div class="hero-foot">
-        <a class="btn btn-sm" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">Voir tout le mois {{ icon('arrow-right', 'i-sm') }}</a>
-        <a class="btn btn-sm btn-ghost" href="/planning/exporter/pdf?annee={{ dimanche.year }}&mois={{ dimanche.month }}">{{ icon('download', 'i-sm') }} PDF</a>
-      </div>
+    <form action="/generer_planning" method="post">
+      <input type="hidden" name="annee" value="{{ dimanche.year }}"><input type="hidden" name="mois" value="{{ dimanche.month }}">
+      <button class="btn" type="submit" data-loading>{{ icon('sparkles') }} Générer {{ MOIS_FR[dimanche.month]|lower }}</button>
+    </form>
     {% endif %}
-  </section>
-
-  <div class="stack">
-    <section class="card" aria-labelledby="indispo-titre">
-      <div class="card-head">
-        <h2 id="indispo-titre">Absences à venir</h2>
-        <a class="btn btn-sm btn-ghost" href="/indisponibilites">Tout voir</a>
-      </div>
-      {% if indispos %}
-      <ul class="list">
-        {% for i in indispos %}
-        <li class="list-item">
-          <div class="date-tile"><div class="m">{{ MOIS_COURTS[i.date.month] }}</div><div class="d">{{ i.date.day }}</div></div>
-          <div class="grow">
-            <div class="title">{{ nom_complet(i.membre) if i.membre else '—' }}</div>
-            <div class="meta"><span class="badge">{{ i.role.nom if i.role else 'Toutes activités' }}</span></div>
-          </div>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="empty" style="padding:32px 20px">
-        <p style="margin-bottom:0">Aucune absence signalée pour les 30 prochains jours.</p>
-      </div>
-      {% endif %}
-    </section>
-
-    <section aria-labelledby="dept-titre">
-      <h2 id="dept-titre" class="sr-only">Départements</h2>
-      <a class="dept" href="/generateur">
-        <span class="dept-icon">{{ icon('calendar') }}</span>
-        <span class="grow"><strong>Coordination</strong><br><span class="muted small">Membres, indisponibilités et planning des cultes</span></span>
-        {{ icon('chevron-right') }}
-      </a>
-      <div class="dept is-soon" aria-disabled="true">
-        <span class="dept-icon">{{ icon('camera') }}</span>
-        <span class="grow"><strong>Photo & Médias</strong><br><span class="muted small">Planning de l'équipe photo</span></span>
-        <span class="badge badge-accent">Bientôt</span>
-      </div>
-    </section>
+    <img class="hero-mark" src="{{ (org(request) or ORGANISATIONS["ejp"]).mark }}" alt="">
   </div>
-</div>
+  <div class="hero-team">
+    <h2>L'équipe de dimanche</h2>
+    {% if equipe %}
+    <ul class="team">
+      {% for role, cell in equipe %}
+      <li>
+        <a href="/planning/modifier?date_str={{ dimanche.isoformat() }}&role_id={{ role.id }}">
+          <span class="role">{{ role.nom }}</span>
+          {% if cell.noms %}<span class="who">{{ cell.noms|join(', ') }}</span>
+          {% else %}<span class="who missing"><span class="slot-missing">À pourvoir</span></span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Aucun rôle configuré. <a class="link" href="/roles">Créer les rôles du culte</a></p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="facts" aria-label="En bref">
+  <a class="fact" href="/membres"><b>{{ stats.membres }}</b><span>membre{{ 's' if stats.membres > 1 }} dans l'équipe</span></a>
+  {% if planning.est_vide %}
+  <a class="fact" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}"><b>—</b><span>{{ MOIS_FR[planning.mois] }} pas encore généré</span></a>
+  {% elif planning.places_manquantes %}
+  <a class="fact is-alert" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}"><b>{{ planning.places_manquantes }}</b><span>place{{ 's' if planning.places_manquantes > 1 }} à pourvoir en {{ MOIS_FR[planning.mois]|lower }}</span></a>
+  {% else %}
+  <a class="fact is-good" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}"><b>100 %</b><span>de {{ MOIS_FR[planning.mois]|lower }} pourvu</span></a>
+  {% endif %}
+  <a class="fact" href="/indisponibilites"><b>{{ stats.indispos }}</b><span>absence{{ 's' if stats.indispos > 1 }} signalée{{ 's' if stats.indispos > 1 }} à venir</span></a>
+</section>
+
+<section class="section" aria-labelledby="abs-titre">
+  <div class="section-head"><h2 id="abs-titre">Absences à venir</h2><a class="link" href="/indisponibilites">Tout voir</a></div>
+  {% if indispos %}
+  <ul class="rows">
+    {% for i in indispos %}
+    <li>
+      <span class="date">{{ i.date.day }} {{ MOIS_COURTS[i.date.month] }}</span>
+      <span class="grow"><span class="title">{{ nom_complet(i.membre) if i.membre else '—' }}</span></span>
+      <span class="tail">{{ i.role.nom if i.role else 'Toutes les activités' }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Personne n'a signalé d'absence pour le mois à venir.</p>
+  {% endif %}
+</section>
 {% endblock %}

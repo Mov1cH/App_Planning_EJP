@@ -1,4 +1,7 @@
+import os
+
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from .config import DATABASE_URL
@@ -11,9 +14,12 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+elif os.getenv("VERCEL"):
+    # Fonctions serverless : pas de pool local, c'est le pooler Supabase qui mutualise
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, poolclass=NullPool)
 else:
     # pool_pre_ping : évite les erreurs « connexion fermée » après une période d'inactivité
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, pool_recycle=300, pool_size=3, max_overflow=5)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

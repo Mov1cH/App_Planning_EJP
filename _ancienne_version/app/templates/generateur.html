@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Générateur de Planning - Planning EJP{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h3 mb-0 text-gray-800">Générateur de Planning</h2>
+    </div>
+
+    <!-- Formulaire de génération -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3 border-bottom-0">
+            <h6 class="m-0 font-weight-bold text-primary">Générer un mois</h6>
+        </div>
+        <div class="card-body">
+            <form action="/generer_planning" method="POST" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="annee" class="form-label text-muted small fw-bold">Année</label>
+                    <input type="number" class="form-control" id="annee" name="annee" value="{{ annee_courante }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="mois" class="form-label text-muted small fw-bold">Mois</label>
+                    <select class="form-select" id="mois" name="mois" required>
+                        <option value="1" {% if mois_selectionne == 1 %}selected{% endif %}>Janvier</option>
+                        <option value="2" {% if mois_selectionne == 2 %}selected{% endif %}>Février</option>
+                        <option value="3" {% if mois_selectionne == 3 %}selected{% endif %}>Mars</option>
+                        <option value="4" {% if mois_selectionne == 4 %}selected{% endif %}>Avril</option>
+                        <option value="5" {% if mois_selectionne == 5 %}selected{% endif %}>Mai</option>
+                        <option value="6" {% if mois_selectionne == 6 %}selected{% endif %}>Juin</option>
+                        <option value="7" {% if mois_selectionne == 7 %}selected{% endif %}>Juillet</option>
+                        <option value="8" {% if mois_selectionne == 8 %}selected{% endif %}>Août</option>
+                        <option value="9" {% if mois_selectionne == 9 %}selected{% endif %}>Septembre</option>
+                        <option value="10" {% if mois_selectionne == 10 %}selected{% endif %}>Octobre</option>
+                        <option value="11" {% if mois_selectionne == 11 %}selected{% endif %}>Novembre</option>
+                        <option value="12" {% if mois_selectionne == 12 %}selected{% endif %}>Décembre</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2">Générer le planning</button>
+                    </div>
+                </div>
+            </form>
+            
+            <div class="mt-3 text-end">
+                <form action="/planning/reinitialiser" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Es-tu sûr de vouloir vider tout le planning actuel ?');">🗑️ Vider le planning</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tableau du planning -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Planning Généré</h6>
+            <div>
+                {% if matrice %}
+                <a href="/planning/exporter/pdf?annee={{ annee_selectionnee }}&mois={{ mois_selectionne }}" class="btn btn-primary btn-sm">⬇️ Exporter en PDF</a>
+                <a href="/planning/exporter/excel?annee={{ annee_selectionnee }}&mois={{ mois_selectionne }}" class="btn btn-success btn-sm">📊 Exporter en Excel</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover align-middle mb-0 text-center">
+                    <thead class="table-light text-muted small uppercase">
+                        <tr>
+                            <th class="ps-4 text-start">Activité / Rôle</th>
+                            {% for d in dimanches %}
+                            <th>{{ d.strftime('%d/%m/%Y') }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if matrice %}
+                            {% for role_id, data in matrice.items() %}
+                            <tr>
+                                <td class="ps-4 fw-bold text-start text-primary">{{ data.nom }}</td>
+                                {% for d in dimanches %}
+                                <td class="p-0">
+                                    <a href="/planning/modifier?date_str={{ d.strftime('%Y-%m-%d') }}&role_id={{ role_id }}" class="d-block p-2 text-decoration-none text-dark h-100">
+                                        {% set noms = data.dates.get(d) %}
+                                        {% if noms and noms|length > 0 %}
+                                            {{ noms|join('<br>')|safe }}
+                                        {% else %}
+                                            <div class="d-flex align-items-center justify-content-center h-100">
+                                                <span class="text-muted">-</span>
+                                            </div>
+                                        {% endif %}
+                                    </a>
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ dimanches|length + 1 }}" class="text-center py-5 text-muted">
+                                <div class="mb-2">📅</div>
+                                Aucun planning n'a été généré pour ce mois.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

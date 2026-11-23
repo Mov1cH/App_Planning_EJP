@@ -1,50 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Mon compte{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <span class="eyebrow">Paramètres</span>
-    <h1>Mon compte</h1>
-  </div>
-</div>
+<div class="page-head"><h1 class="page-title">Mon compte</h1></div>
 
-<div class="grid grid-2" style="max-width:1000px">
-  <section class="card" aria-labelledby="eglise-titre">
-    <div class="card-head"><h2 id="eglise-titre">Église</h2></div>
-    <form class="card-body" action="/profil/modifier" method="post">
-      <div class="field">
-        <label class="label" for="email">Email de connexion</label>
-        <input class="input" type="email" id="email" value="{{ current_eglise.email }}" readonly>
-      </div>
-      <div class="field">
-        <label class="label" for="nom_eglise">Nom de l'église</label>
-        <input class="input" id="nom_eglise" name="nom_eglise" value="{{ current_eglise.nom_eglise }}" required>
-        <span class="hint">Affiché dans l'application et sur les exports PDF.</span>
-      </div>
-      <button class="btn btn-primary" type="submit" data-loading>Enregistrer</button>
+{% set o = org(request) %}
+<section class="form-narrow" aria-labelledby="org-titre" style="max-width:820px;margin-bottom:48px">
+  <div class="section-head" style="padding:0"><h2 id="org-titre" style="font-size:28px">Type d'église</h2></div>
+  <p class="hint" style="margin:-8px 0 16px">Détermine le logo affiché, le modèle de déroulé et le logo des exports.</p>
+  <form action="/profil/organisation" method="post" class="org-choice" style="max-width:520px">
+    {% for cle, oo in ORGANISATIONS.items() %}
+    <button class="org-card" type="submit" name="organisation" value="{{ cle }}" aria-pressed="{{ 'true' if o.cle == cle else 'false' }}">
+      <span class="org-inner"><img src="{{ oo.mark }}" alt=""><strong>{{ oo.nom }}</strong><small>{{ 'Actuel' if o.cle == cle else oo.nom_long }}</small></span>
+    </button>
+    {% endfor %}
+  </form>
+</section>
+
+<section class="form-narrow" aria-labelledby="couleur-titre" style="max-width:820px;margin-bottom:48px">
+  <div class="section-head" style="padding:0"><h2 id="couleur-titre" style="font-size:28px">Couleur de l'église</h2></div>
+  <p class="hint" style="margin:-8px 0 16px">Utilisée pour le prochain culte, les boutons principaux et la page de connexion, pour tous les membres de votre espace.</p>
+  <form action="/profil/couleur" method="post" class="swatches">
+    {% for cle, c in COULEURS.items() %}
+    <button class="swatch" type="submit" name="couleur" value="{{ cle }}" aria-pressed="{{ 'true' if (current_eglise.couleur or o.couleur) == cle else 'false' }}">
+      <i style="background: {{ c.acc }}"></i>
+      <span>{{ c.nom }}<small>{{ 'Couleur actuelle' if (current_eglise.couleur or o.couleur) == cle else 'Choisir' }}</small></span>
+    </button>
+    {% endfor %}
+  </form>
+</section>
+
+<div class="cols-2">
+  <section aria-labelledby="eglise-titre">
+    <h2 id="eglise-titre" style="font-size:28px;margin-bottom:18px">Église</h2>
+    <form action="/profil/modifier" method="post">
+      <div class="field"><label class="label" for="email">Email de connexion</label><input class="input" type="email" id="email" value="{{ current_eglise.email }}" readonly></div>
+      <div class="field"><label class="label" for="nom_eglise">Nom de l'église</label><input class="input" id="nom_eglise" name="nom_eglise" value="{{ current_eglise.nom_eglise }}" required><span class="hint">Affiché dans l'application et sur les PDF.</span></div>
+      <button class="btn btn-dark" type="submit" data-loading>Enregistrer</button>
     </form>
   </section>
-
-  <section class="card" aria-labelledby="mdp-titre">
-    <div class="card-head"><h2 id="mdp-titre">Mot de passe</h2></div>
-    <form class="card-body" action="/profil/mot-de-passe" method="post">
-      <div class="field">
-        <label class="label" for="mot_de_passe_actuel">Mot de passe actuel</label>
-        <input class="input" type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" autocomplete="current-password" required>
-      </div>
-      <div class="field">
-        <label class="label" for="nouveau_mot_de_passe">Nouveau mot de passe</label>
-        <input class="input" type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" autocomplete="new-password" minlength="8" required>
-        <span class="hint">8 caractères minimum.</span>
-      </div>
-      <div class="field">
-        <label class="label" for="confirmation_mot_de_passe">Confirmer</label>
-        <input class="input" type="password" id="confirmation_mot_de_passe" name="confirmation_mot_de_passe" autocomplete="new-password" minlength="8" required>
-      </div>
-      <button class="btn btn-primary" type="submit" data-loading>Changer le mot de passe</button>
+  <section aria-labelledby="mdp-titre">
+    <h2 id="mdp-titre" style="font-size:28px;margin-bottom:18px">Mot de passe</h2>
+    <form action="/profil/mot-de-passe" method="post">
+      <div class="field"><label class="label" for="mot_de_passe_actuel">Mot de passe actuel</label><input class="input" type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" autocomplete="current-password" required></div>
+      <div class="field"><label class="label" for="nouveau_mot_de_passe">Nouveau mot de passe</label><input class="input" type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" autocomplete="new-password" minlength="8" required><span class="hint">8 caractères minimum.</span></div>
+      <div class="field"><label class="label" for="confirmation_mot_de_passe">Confirmer</label><input class="input" type="password" id="confirmation_mot_de_passe" name="confirmation_mot_de_passe" autocomplete="new-password" minlength="8" required></div>
+      <button class="btn btn-dark" type="submit" data-loading>Changer le mot de passe</button>
     </form>
   </section>
 </div>
-
-<a class="btn btn-ghost" href="/logout" style="margin-top:20px">{{ icon('logout') }} Se déconnecter</a>
+<a class="btn btn-quiet" href="/logout" style="margin-top:40px">{{ icon('logout') }} Se déconnecter</a>
 {% endblock %}

@@ -1,0 +1,4 @@
+<nav class="seg equipe-tabs" aria-label="Équipe">
+  <a href="/membres"{% if request.url.path.startswith('/membres') %} aria-current="page"{% endif %}>{{ icon('users') }} Membres</a>
+  <a href="/roles"{% if request.url.path.startswith('/roles') %} aria-current="page"{% endif %}>{{ icon('roles') }} Rôles</a>
+</nav>

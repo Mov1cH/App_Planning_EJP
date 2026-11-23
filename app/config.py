@@ -57,11 +57,15 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 ADMIN_CHURCH_NAME = os.getenv("ADMIN_CHURCH_NAME", "EJP ST Etienne")
 
-# Envoi d'e-mails (mot de passe oublié). Pour Gmail : créer un « mot de passe d'application ».
+# Envoi d'e-mails (codes de vérification, mot de passe oublié), par SMTP.
+#  - Gmail : SMTP_SERVER=smtp.gmail.com, SMTP_PORT=465, EMAIL_ADDRESS=adresse, EMAIL_PASSWORD=mot de passe d'application
+#  - Brevo : SMTP_SERVER=smtp-relay.brevo.com, SMTP_PORT=587, EMAIL_ADDRESS=identifiant SMTP Brevo,
+#            EMAIL_PASSWORD=clé SMTP, EMAIL_FROM=adresse d'expédition validée dans Brevo
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER = os.getenv("EMAIL_ADDRESS", "")
 SMTP_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "") or SMTP_USER
 EMAIL_ENABLED = bool(SMTP_USER and SMTP_PASSWORD)
 
 # URL publique de l'application (utilisée dans les e-mails). Facultatif.
@@ -71,3 +75,26 @@ PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 RESET_TOKEN_MAX_AGE = 60 * 60
 
 MIN_PASSWORD_LENGTH = 8
+
+# Couleurs d'accent proposées (choisies par chaque église dans « Mon compte »)
+COULEURS = {
+    "flamme": {"nom": "Orange flamme", "acc": "#CC3D17", "soft": "#FCECE6", "light": "#FFD3C2", "ink": "#9E2E10"},
+    "bleu": {"nom": "Bleu électrique", "acc": "#1D33E6", "soft": "#ECEFFE", "light": "#C9D0FF", "ink": "#1426B0"},
+    "bordeaux": {"nom": "Bordeaux", "acc": "#6B1E3A", "soft": "#F6EAEF", "light": "#E8C6D2", "ink": "#521529"},
+    "emeraude": {"nom": "Vert", "acc": "#0F3D26", "soft": "#E6F0EA", "light": "#C8DCCF", "ink": "#0A2C1B"},
+}
+
+# Organisations : ICC (église principale) et EJP (église des jeunes rattachée à ICC)
+ORGANISATIONS = {
+    "ejp": {
+        "nom": "EJP", "nom_long": "Église Jeunes Prodiges", "couleur": "emeraude",
+        "mark": "/static/brand/ejp-noir.png", "complet": "/static/logo.png",
+        "exemple": "EJP Saint-Étienne",
+    },
+    "icc": {
+        "nom": "ICC", "nom_long": "Impact Centre Chrétien", "couleur": "emeraude",
+        "mark": "/static/brand/icc-noir.png", "complet": "/static/brand/icc-noir.png",
+        "exemple": "ICC Saint-Étienne",
+    },
+}
+COULEUR_DEFAUT = os.getenv("COULEUR", "emeraude") if os.getenv("COULEUR", "emeraude") in COULEURS else "emeraude"

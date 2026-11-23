@@ -2,11 +2,26 @@
 {% block title %}Inscription{% endblock %}
 {% block content %}
 <h2>Créer votre espace</h2>
-<p class="lead">Quelques secondes suffisent. Les rôles habituels du culte sont créés pour vous.</p>
+<p class="lead">Choisissez ICC ou EJP : le logo, les rôles et le modèle de déroulé seront adaptés.</p>
 
 {% if erreur %}<div class="alert alert-erreur" role="alert">{{ icon('alert') }}<span>{{ erreur }}</span></div>{% endif %}
 
 <form action="/register" method="post">
+  <fieldset>
+    <legend>Votre église</legend>
+    <div class="org-choice">
+      {% for cle, o in ORGANISATIONS.items() %}
+      <label class="org-card">
+        <input type="radio" name="organisation" value="{{ cle }}" {{ 'checked' if (organisation or 'ejp') == cle }} required>
+        <span class="org-inner">
+          <img src="{{ o.mark }}" alt="">
+          <strong>{{ o.nom }}</strong>
+          <small>{{ o.nom_long }}</small>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
   <div class="field">
     <label class="label" for="nom_eglise">Nom de l'église</label>
     <div class="input-icon">{{ icon('church') }}
@@ -18,6 +33,7 @@
     <div class="input-icon">{{ icon('mail') }}
       <input class="input" type="email" id="email" name="email" value="{{ email or '' }}" autocomplete="email" inputmode="email" required>
     </div>
+    <span class="hint">Un code de confirmation sera envoyé à cette adresse.</span>
   </div>
   <div class="field">
     <label class="label" for="mot_de_passe">Mot de passe</label>
@@ -27,7 +43,7 @@
     </div>
     <span class="hint" id="pw-hint">8 caractères minimum.</span>
   </div>
-  <button type="submit" class="btn btn-primary btn-block" data-loading>Créer mon espace</button>
+  <button type="submit" class="btn btn-acc btn-block" data-loading>Créer mon espace</button>
 </form>
 <p class="auth-links">Déjà inscrit ? <a href="/login">Se connecter</a></p>
 {% endblock %}

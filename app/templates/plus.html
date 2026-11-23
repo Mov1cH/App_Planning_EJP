@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Plus{% endblock %}
+{% block content %}
+<div class="page-head"><h1 class="page-title">Plus</h1></div>
+{% for groupe, liens in [
+  ("Équipe", [("/membres", "users", "Membres", "Les personnes du planning et leurs rôles"),
+              ("/roles", "roles", "Rôles", "Les postes à pourvoir chaque dimanche")]),
+  ("Stats", [("/stars", "star", "STAR", "Les serviteurs suivis dans les stats"),
+             ("/stats/departements", "layers", "Départements", "La liste proposée au pointage")]),
+  ("Compte", [("/profil", "user", "Mon compte", "Nom de l'église, couleur, mot de passe"),
+              ("/logout", "logout", "Se déconnecter", "")]),
+] %}
+<div class="group-label">{{ groupe }}</div>
+<ul class="rows menu-rows">
+  {% for href, ic, titre, meta in liens %}
+  <li><a href="{{ href }}">{{ icon(ic) }}<span class="grow"><span class="title">{{ titre }}</span>{% if meta %}<span class="meta">{{ meta }}</span>{% endif %}</span>{{ icon('chevron-right') }}</a></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+{% endblock %}

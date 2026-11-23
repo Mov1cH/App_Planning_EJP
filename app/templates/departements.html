@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Départements{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="/stats">{{ icon('arrow-left') }} Stats</a>
+    <h1 class="page-title">Départements</h1>
+    <p class="page-sub">La liste proposée au pointage des cultes, dans cet ordre. Elle est indépendante des rôles du planning : un département qui porte le nom d'un rôle est pré-rempli avec les personnes prévues.</p>
+  </div>
+</div>
+
+<div class="layout-side">
+  <section aria-labelledby="liste-titre">
+    <h2 id="liste-titre" class="sr-only">Liste des départements</h2>
+    <ul class="rows">
+      {% for d in departements %}
+      <li>
+        <form class="grow dep-rename" action="/stats/departements/{{ d.id }}/renommer" method="post">
+          <label class="sr-only" for="dep-{{ d.id }}">Nom du département</label>
+          <input class="input input-flat" id="dep-{{ d.id }}" name="nom" value="{{ d.nom }}" maxlength="60" required>
+          <button class="btn btn-sm" type="submit">Renommer</button>
+        </form>
+        <span class="ops">
+          <form action="/stats/departements/{{ d.id }}/deplacer" method="post"><input type="hidden" name="sens" value="-1"><button class="icon-btn" type="submit" aria-label="Monter {{ d.nom }}"{% if loop.first %} disabled{% endif %}>{{ icon('up') }}</button></form>
+          <form action="/stats/departements/{{ d.id }}/deplacer" method="post"><input type="hidden" name="sens" value="1"><button class="icon-btn icon-down" type="submit" aria-label="Descendre {{ d.nom }}"{% if loop.last %} disabled{% endif %}>{{ icon('up') }}</button></form>
+          <form action="/stats/departements/{{ d.id }}/supprimer" method="post" data-confirm="« {{ d.nom }} » ne sera plus proposé au pointage. Les services déjà comptés restent dans les statistiques." data-confirm-title="Retirer ce département ?" data-confirm-ok="Retirer">
+            <button class="icon-btn danger" type="submit" aria-label="Retirer {{ d.nom }}">{{ icon('trash') }}</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <aside class="panel" aria-labelledby="ajout-titre">
+    <h2 id="ajout-titre">Nouveau département</h2>
+    <form action="/stats/departements" method="post">
+      <div class="field"><label class="label" for="nom">Nom</label><input class="input" id="nom" name="nom" placeholder="Sono, Accueil, Photo…" maxlength="60" required></div>
+      <button class="btn btn-dark btn-block" type="submit" data-loading>Ajouter</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

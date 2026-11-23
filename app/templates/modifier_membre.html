@@ -1,28 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Modifier {{ nom_complet(membre) }}{% endblock %}
+{% block title %}{{ nom_complet(membre) }}{% endblock %}
 {% block content %}
-<a class="back-link" href="/membres">{{ icon('arrow-left', 'i-sm') }} Membres</a>
-<div class="page-head"><div><h1>{{ nom_complet(membre) }}</h1></div></div>
-<form class="card" action="/membres/{{ membre.id }}/modifier" method="post" style="max-width:640px">
-  <div class="card-body">
-    <div class="row">
-      <div class="field">
-        <label class="label" for="prenom">Prénom</label>
-        <input class="input" id="prenom" name="prenom" value="{{ membre.prenom or '' }}">
-      </div>
-      <div class="field">
-        <label class="label" for="nom">Nom <span class="muted">*</span></label>
-        <input class="input" id="nom" name="nom" value="{{ membre.nom }}" required>
-      </div>
-    </div>
-    <fieldset class="field" style="border:0;padding:0;margin:0">
-      <legend class="label" style="margin-bottom:8px">Rôles possibles</legend>
-      {% with nom_champ='roles', coches=membre.roles|map(attribute='id')|list %}{% include "_role_chips.html" %}{% endwith %}
-    </fieldset>
+<a class="back" href="/membres">{{ icon('arrow-left', 'i-sm') }} Membres</a>
+<div class="page-head"><h1 class="page-title">{{ nom_complet(membre) }}</h1></div>
+<form class="form-narrow" action="/membres/{{ membre.id }}/modifier" method="post">
+  <div class="row2">
+    <div class="field"><label class="label" for="prenom">Prénom</label><input class="input" id="prenom" name="prenom" value="{{ membre.prenom or '' }}"></div>
+    <div class="field"><label class="label" for="nom">Nom</label><input class="input" id="nom" name="nom" value="{{ membre.nom }}" required></div>
   </div>
-  <div class="hero-foot" style="justify-content:flex-end">
-    <a class="btn btn-ghost" href="/membres">Annuler</a>
-    <button class="btn btn-primary" type="submit" data-loading>{{ icon('check') }} Enregistrer</button>
+  <fieldset>
+    <legend>Rôles possibles</legend>
+    {% with nom_champ='roles', coches=membre.roles|map(attribute='id')|list %}{% include "_role_chips.html" %}{% endwith %}
+  </fieldset>
+  <div class="actions">
+    <button class="btn btn-acc" type="submit" data-loading>Enregistrer</button>
+    <a class="btn btn-quiet" href="/membres">Annuler</a>
   </div>
 </form>
 {% endblock %}

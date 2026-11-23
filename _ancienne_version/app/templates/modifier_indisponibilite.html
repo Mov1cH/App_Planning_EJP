@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier une Indisponibilité - Planning EJP{% endblock %}
+
+{% block extra_head %}
+    <!-- Intégration de Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <h2 class="h3 mb-4 text-gray-800">Modifier une Indisponibilité</h2>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <h6 class="m-0 font-weight-bold text-primary">Détails de l'indisponibilité</h6>
+                </div>
+                <div class="card-body">
+                    <form action="/indisponibilites/{{ indispo.id }}/modifier" method="POST">
+                        <div class="mb-3">
+                            <label for="membre_id" class="form-label text-muted small fw-bold">Membre</label>
+                            <select class="form-select" id="membre_id" name="membre_id" required>
+                                {% for membre in membres %}
+                                <option value="{{ membre.id }}" {% if membre.id == indispo.membre_id %}selected{% endif %}>{{ membre.nom }} {{ membre.prenom or '' }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="role_id" class="form-label text-muted small fw-bold">Activité concernée</label>
+                            <select class="form-select" id="role_id" name="role_id">
+                                <option value="">Toute activité (Indisponibilité générale)</option>
+                                {% for role in roles %}
+                                <option value="{{ role.id }}" {% if role.id == indispo.role_id %}selected{% endif %}>{{ role.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label for="date_indispo" class="form-label text-muted small fw-bold">Date</label>
+                            <input type="text" class="form-control" id="date_indispo" name="date_indispo" value="{{ indispo.date.strftime('%Y-%m-%d') }}" required>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+                            <a href="/indisponibilites" class="btn btn-secondary">Annuler</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>flatpickr("#date_indispo", { dateFormat: "Y-m-d" });</script>
+{% endblock %}

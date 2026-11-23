@@ -1,0 +1,26 @@
+{% extends "auth_base.html" %}
+{% block title %}Confirmer votre adresse{% endblock %}
+{% block content %}
+<h2>Confirmez votre adresse</h2>
+<p class="lead">Nous avons envoyé un code à 6 chiffres à <strong>{{ email }}</strong>. Saisissez-le pour activer votre espace. Pensez à vérifier vos spams.</p>
+
+{% for categorie, message in get_flashes(request) %}
+<div class="alert alert-{{ categorie }}" role="status">{{ icon('info') }}<span>{{ message }}</span></div>
+{% endfor %}
+{% if erreur %}<div class="alert alert-erreur" role="alert">{{ icon('alert') }}<span>{{ erreur }}</span></div>{% endif %}
+
+<form action="/verifier" method="post">
+  <div class="field">
+    <label class="label" for="code">Code de vérification</label>
+    <input class="input input-code" type="text" id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7"
+           autocomplete="one-time-code" placeholder="000000" required autofocus>
+  </div>
+  <button type="submit" class="btn btn-acc btn-block" data-loading>Confirmer</button>
+</form>
+
+<div class="verif-actions">
+  <form action="/verifier/renvoyer" method="post"><button class="btn btn-quiet btn-sm" type="submit">Renvoyer un code</button></form>
+  <form action="/verifier/annuler" method="post"><button class="btn btn-quiet btn-sm" type="submit">Utiliser une autre adresse</button></form>
+</div>
+<p class="auth-links"><a href="/login">Retour à la connexion</a></p>
+{% endblock %}

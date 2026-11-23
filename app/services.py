@@ -4,8 +4,9 @@ import logging
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from typing import Dict, List, Optional, Set
+import json
+from datetime import date, datetime, timedelta
+from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session, joinedload
@@ -138,10 +139,24 @@ class PlanningMois:
         return out
 
 
-def construire_planning(db: Session, eglise_id: int, annee: int, mois: int) -> PlanningMois:
+def construire_planning(db: Session, eglise_id: int, annee: int, mois: int,
+                        proposition: Optional[List[Tuple[date, int, int]]] = None) -> PlanningMois:
     debut, fin = bornes_mois(annee, mois)
     dimanches = dimanches_du_mois(annee, mois)
     roles = roles_ordonnes(db, eglise_id)
+
+    if proposition is not None:
+        membres = {m.id: m for m in membres_ordonnes(db, eglise_id)}
+        noms_p: Dict[tuple, List[str]] = defaultdict(list)
+        for jour, role_id, membre_id in proposition:
+            if membre_id in membres:
+                noms_p[(role_id, jour)].append(nom_complet(membres[membre_id]))
+        lignes = [
+            Ligne(role=r, cellules=[Cellule(date=d, noms=sorted(noms_p.get((r.id, d), [])), quota=r.quota or 1)
+                                    for d in dimanches])
+            for r in roles
+        ]
+        return PlanningMois(annee, mois, dimanches, lignes, nb_affectations=len(proposition))
 
     affectations = (
         db.query(models.Planning)
@@ -171,22 +186,22 @@ def construire_planning(db: Session, eglise_id: int, annee: int, mois: int) -> P
 # ---------------------------------------------------------------------------
 # Génération automatique
 # ---------------------------------------------------------------------------
-def generer_planning(db: Session, eglise_id: int, annee: int, mois: int) -> int:
-    """(Re)génère le planning d'un mois. Retourne le nombre de places non pourvues.
+Affectation = Tuple[date, int, int]  # (dimanche, role_id, membre_id)
+
+
+def calculer_affectations(db: Session, eglise_id: int, annee: int, mois: int,
+                          varier: bool = False) -> Tuple[List[Affectation], int]:
+    """Calcule une combinaison pour le mois, sans rien enregistrer.
 
     Règles :
       * une personne ne sert qu'à un seul rôle par dimanche ;
       * les indisponibilités (générales ou par rôle) sont respectées ;
-      * priorité à ceux qui ont le moins servi ce mois-ci, puis à ceux qui n'ont
-        pas servi dans ce rôle depuis le plus longtemps, puis globalement.
+      * priorité à ceux qui ont le moins servi ce mois-ci ; puis, par défaut, à ceux
+        qui n'ont pas servi dans ce rôle depuis le plus longtemps.
+    Avec ``varier``, l'équité du mois est conservée mais l'ordre entre personnes
+    à égalité est tiré au hasard, ce qui donne une combinaison différente.
     """
     debut, fin = bornes_mois(annee, mois)
-
-    db.query(models.Planning).filter(
-        models.Planning.eglise_id == eglise_id,
-        models.Planning.date >= debut,
-        models.Planning.date <= fin,
-    ).delete(synchronize_session=False)
 
     historique = (
         db.query(models.Planning)
@@ -228,6 +243,7 @@ def generer_planning(db: Session, eglise_id: int, annee: int, mois: int) -> int:
 
     compteur_mois: Dict[int, int] = defaultdict(int)
     manquants = 0
+    resultat: List[Affectation] = []
 
     for dimanche in dimanches_du_mois(annee, mois):
         deja_pris: Set[int] = set()
@@ -235,25 +251,126 @@ def generer_planning(db: Session, eglise_id: int, annee: int, mois: int) -> int:
             exclus = deja_pris | indispo_generale[dimanche] | indispo_role[(dimanche, role.id)]
             candidats = [m for m in membres_par_role[role.id] if m.id not in exclus]
             random.shuffle(candidats)  # départage aléatoire à égalité
-            candidats.sort(
-                key=lambda m: (
-                    compteur_mois[m.id],
-                    dernier_role.get((m.id, role.id), date.min),
-                    dernier_global.get(m.id, date.min),
+            if varier:
+                candidats.sort(key=lambda m: compteur_mois[m.id])
+            else:
+                candidats.sort(
+                    key=lambda m: (
+                        compteur_mois[m.id],
+                        dernier_role.get((m.id, role.id), date.min),
+                        dernier_global.get(m.id, date.min),
+                    )
                 )
-            )
             quota = role.quota or 1
             choisis = candidats[:quota]
             manquants += quota - len(choisis)
             for m in choisis:
-                db.add(models.Planning(date=dimanche, membre_id=m.id, role_id=role.id, eglise_id=eglise_id))
+                resultat.append((dimanche, role.id, m.id))
                 deja_pris.add(m.id)
                 dernier_global[m.id] = dimanche
                 dernier_role[(m.id, role.id)] = dimanche
                 compteur_mois[m.id] += 1
 
+    return resultat, manquants
+
+
+def _remplacer_mois(db: Session, eglise_id: int, annee: int, mois: int, affectations: List[Affectation]) -> None:
+    debut, fin = bornes_mois(annee, mois)
+    db.query(models.Planning).filter(
+        models.Planning.eglise_id == eglise_id,
+        models.Planning.date >= debut,
+        models.Planning.date <= fin,
+    ).delete(synchronize_session=False)
+    for jour, role_id, membre_id in affectations:
+        db.add(models.Planning(date=jour, membre_id=membre_id, role_id=role_id, eglise_id=eglise_id))
+
+
+def generer_planning(db: Session, eglise_id: int, annee: int, mois: int) -> int:
+    """Génère et enregistre directement le planning d'un mois (mois encore vide)."""
+    affectations, manquants = calculer_affectations(db, eglise_id, annee, mois)
+    _remplacer_mois(db, eglise_id, annee, mois, affectations)
+    supprimer_proposition(db, eglise_id, annee, mois)
     db.commit()
     return manquants
+
+
+# ---------------------------------------------------------------------------
+# Propositions : une autre combinaison, enregistrée seulement si elle est validée
+# ---------------------------------------------------------------------------
+def affectations_actuelles(db: Session, eglise_id: int, annee: int, mois: int) -> List[Affectation]:
+    debut, fin = bornes_mois(annee, mois)
+    lignes = db.query(models.Planning).filter(
+        models.Planning.eglise_id == eglise_id, models.Planning.date >= debut, models.Planning.date <= fin,
+    ).all()
+    return [(p.date, p.role_id, p.membre_id) for p in lignes if p.membre_id is not None]
+
+
+def _ligne_proposition(db: Session, eglise_id: int, annee: int, mois: int) -> Optional[models.PropositionPlanning]:
+    return db.query(models.PropositionPlanning).filter(
+        models.PropositionPlanning.eglise_id == eglise_id,
+        models.PropositionPlanning.annee == annee,
+        models.PropositionPlanning.mois == mois,
+    ).first()
+
+
+def lire_proposition(db: Session, eglise_id: int, annee: int, mois: int) -> Optional[List[Affectation]]:
+    ligne = _ligne_proposition(db, eglise_id, annee, mois)
+    if not ligne:
+        return None
+    try:
+        return [(date.fromisoformat(j), int(r), int(m)) for j, r, m in json.loads(ligne.data)]
+    except (TypeError, ValueError):
+        return None
+
+
+def supprimer_proposition(db: Session, eglise_id: int, annee: int, mois: int) -> None:
+    db.query(models.PropositionPlanning).filter(
+        models.PropositionPlanning.eglise_id == eglise_id,
+        models.PropositionPlanning.annee == annee,
+        models.PropositionPlanning.mois == mois,
+    ).delete(synchronize_session=False)
+
+
+def proposer_planning(db: Session, eglise_id: int, annee: int, mois: int, essais: int = 40) -> Tuple[int, bool]:
+    """Calcule une combinaison différente du planning validé (et de la proposition en cours).
+
+    Retourne (places non pourvues, nouvelle combinaison trouvée).
+    """
+    a_eviter = [set(affectations_actuelles(db, eglise_id, annee, mois))]
+    precedente = lire_proposition(db, eglise_id, annee, mois)
+    if precedente is not None:
+        a_eviter.append(set(precedente))
+
+    meilleure, manquants_meilleure, nouvelle = None, 0, False
+    for _ in range(essais):
+        affectations, manquants = calculer_affectations(db, eglise_id, annee, mois, varier=True)
+        if all(set(affectations) != e for e in a_eviter):
+            meilleure, manquants_meilleure, nouvelle = affectations, manquants, True
+            break
+        if meilleure is None:
+            meilleure, manquants_meilleure = affectations, manquants
+
+    ligne = _ligne_proposition(db, eglise_id, annee, mois)
+    if not ligne:
+        ligne = models.PropositionPlanning(eglise_id=eglise_id, annee=annee, mois=mois)
+        db.add(ligne)
+    ligne.data = json.dumps([[j.isoformat(), r, m] for j, r, m in meilleure])
+    ligne.created_at = datetime.utcnow()
+    db.commit()
+    return manquants_meilleure, nouvelle
+
+
+def valider_proposition(db: Session, eglise_id: int, annee: int, mois: int) -> bool:
+    proposition = lire_proposition(db, eglise_id, annee, mois)
+    if proposition is None:
+        return False
+    membres = {m.id for m in membres_ordonnes(db, eglise_id)}
+    roles = {r.id for r in roles_ordonnes(db, eglise_id)}
+    propres = [a for a in proposition if a[1] in roles and a[2] in membres]
+    _remplacer_mois(db, eglise_id, annee, mois, propres)
+    supprimer_proposition(db, eglise_id, annee, mois)
+    db.commit()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +382,8 @@ _COLONNES_AJOUTEES = {
         "is_verified": "BOOLEAN DEFAULT FALSE",
         "verification_code": "VARCHAR",
         "reset_token": "VARCHAR",
+        "couleur": "VARCHAR",
+        "organisation": "VARCHAR",
     },
     "roles": {"ordre": "INTEGER DEFAULT 0"},
     "membres": {"prenom": "VARCHAR"},
@@ -284,10 +403,24 @@ def migrer_schema() -> None:
                 if nom not in existantes:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {nom} {ddl}"))
                     log.info("Colonne ajoutée : %s.%s", table, nom)
+        if inspecteur.has_table("eglises"):
+            conn.execute(text("UPDATE eglises SET couleur = 'emeraude' WHERE couleur = 'sapin' OR couleur IS NULL"))
 
 
-def creer_roles_par_defaut(db: Session, eglise_id: int) -> None:
-    for ordre, nom in enumerate(ROLES_PAR_DEFAUT):
+ROLES_PAR_DEFAUT_ICC = [
+    "Prière des STAR",
+    "Louange et adoration",
+    "Annonces",
+    "Prédication",
+    "Sainte Cène",
+    "Offrandes",
+    "Accueil des nouveaux",
+]
+
+
+def creer_roles_par_defaut(db: Session, eglise_id: int, organisation: str = "ejp") -> None:
+    noms = ROLES_PAR_DEFAUT_ICC if organisation == "icc" else ROLES_PAR_DEFAUT
+    for ordre, nom in enumerate(noms):
         db.add(models.Role(nom=nom, quota=1, ordre=ordre, eglise_id=eglise_id))
 
 
@@ -310,9 +443,83 @@ def assurer_admin(db: Session) -> None:
         mot_de_passe_hash=hash_password(config.ADMIN_PASSWORD),
         is_admin=True,
         is_verified=True,
+        organisation="ejp",
     )
     db.add(admin)
     db.flush()
     creer_roles_par_defaut(db, admin.id)
     db.commit()
     log.info("Compte administrateur créé : %s", config.ADMIN_EMAIL)
+
+
+# ---------------------------------------------------------------------------
+# Déroulé du culte
+# ---------------------------------------------------------------------------
+DEROULE_ETAPES_DEFAUT = [
+    ("12:40", 10, "Prière des STAR", "prière", ""),
+    ("13:00", 10, "Modération", "modération", ""),
+    ("", 5, "EJP le Mag", None, "MCAD"),
+    ("", 15, "Sainte Cène et offrandes", "cène", ""),
+    ("", 20, "Louange et adoration", None, "Prodiges Musique"),
+    ("", 60, "Prédication", "prédication", ""),
+    ("", 10, "Accueil des nouveaux, annonces et clôture", "prédication", ""),
+]
+
+
+DEROULE_ETAPES_ICC = [
+    ("08:30", 30, "Prière des STAR", "prière des star", ""),
+    ("", 30, "Louange et adorations", "louange", ""),
+    ("", 15, "Prière et annonces", "annonce", ""),
+    ("", 20, "Louanges et prière", None, ""),
+    ("", 60, "Prédication", "prédication", ""),
+    ("", 10, "Sainte Cène", "cène", ""),
+    ("", 10, "Offrandes", "offrande", ""),
+    ("", 10, "Accueil des nouveaux", "accueil", ""),
+    ("", 5, "Prière de clôture", None, ""),
+]
+
+
+def deroule_par_defaut(roles: List[models.Role], organisation: str = "ejp", nom_eglise: str = "") -> dict:
+    def role_pour(motcle):
+        if not motcle:
+            return None
+        for r in roles:
+            if motcle in r.nom.lower():
+                return r.id
+        return None
+
+    etapes = DEROULE_ETAPES_ICC if organisation == "icc" else DEROULE_ETAPES_DEFAUT
+    base = {
+        "modele": organisation if organisation in ("ejp", "icc") else "ejp",
+        "photo": "",
+        "pied_titre": "",
+        "pied_lignes": [],
+        "etapes": [
+            {"debut": debut, "duree": duree, "titre": titre, "role_id": role_pour(motcle), "personne": personne}
+            for debut, duree, titre, motcle, personne in etapes
+        ],
+    }
+    if organisation == "icc":
+        base.update({
+            "titre": nom_eglise or "ICC Saint-Étienne", "sous_titre": "Culte",
+            "couleur": "#0F3D26", "couleur2": "#9E7432",
+            "pied_titre": "Famille de disciples en service", "pied_lignes": ["Hommes : ", "Femmes : "],
+        })
+    else:
+        base.update({"titre": "Déroulé " + (nom_eglise or "EJP Saint-Étienne"), "sous_titre": "Culte",
+                     "couleur": "#8B5E3C", "couleur2": "#8B5E3C"})
+    return base
+
+
+def affectations_du_jour(db: Session, eglise_id: int, jour: date) -> Dict[int, str]:
+    lignes = (
+        db.query(models.Planning)
+        .options(joinedload(models.Planning.membre))
+        .filter(models.Planning.eglise_id == eglise_id, models.Planning.date == jour)
+        .all()
+    )
+    out: Dict[int, List[str]] = defaultdict(list)
+    for p in lignes:
+        if p.membre:
+            out[p.role_id].append(p.membre.prenom or p.membre.nom)
+    return {rid: " et ".join(sorted(noms)) for rid, noms in out.items()}
