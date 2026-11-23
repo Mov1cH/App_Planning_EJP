@@ -168,12 +168,14 @@ def lignes_proposees(db: Session, eglise_id: int, jour: date) -> List[dict]:
 
 
 def enregistrer_culte(db: Session, eglise_id: int, jour: date, hommes: Optional[int], femmes: Optional[int],
-                      lignes: List[Tuple[str, str, str]]) -> models.Culte:
+                      lignes: List[Tuple[str, str, str]], ados: Optional[int] = None,
+                      enfants: Optional[int] = None) -> models.Culte:
     culte = culte_du_jour(db, eglise_id, jour)
     if not culte:
         culte = models.Culte(eglise_id=eglise_id, date=jour)
         db.add(culte)
     culte.hommes, culte.femmes = hommes, femmes
+    culte.ados, culte.enfants = ados, enfants
     from datetime import datetime
     culte.updated_at = datetime.utcnow()
     culte.services.clear()
@@ -209,12 +211,14 @@ class LigneCulte:
     hommes: Optional[int]
     femmes: Optional[int]
     compteurs: Compteurs
+    ados: Optional[int] = None
+    enfants: Optional[int] = None
 
     @property
     def effectif(self) -> Optional[int]:
-        if self.hommes is None and self.femmes is None:
+        if self.hommes is None and self.femmes is None and self.ados is None and self.enfants is None:
             return None
-        return (self.hommes or 0) + (self.femmes or 0)
+        return (self.hommes or 0) + (self.femmes or 0) + (self.ados or 0) + (self.enfants or 0)
 
 
 @dataclass
@@ -258,6 +262,16 @@ class Bilan:
         v = [c.femmes for c in self.cultes if c.femmes is not None]
         return round(sum(v) / len(v)) if v else None
 
+    @property
+    def ados_moyen(self) -> Optional[int]:
+        v = [c.ados for c in self.cultes if c.ados is not None]
+        return round(sum(v) / len(v)) if v else None
+
+    @property
+    def enfants_moyen(self) -> Optional[int]:
+        v = [c.enfants for c in self.cultes if c.enfants is not None]
+        return round(sum(v) / len(v)) if v else None
+
 
 def _compter(services, compteurs: Compteurs):
     for s in services:
@@ -292,7 +306,7 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         cpt = Compteurs()
         _compter(c.services, cpt)
         _compter(c.services, total)
-        lc = LigneCulte(c.date, c.hommes, c.femmes, cpt)
+        lc = LigneCulte(c.date, c.hommes, c.femmes, cpt, c.ados, c.enfants)
         lignes.append(lc)
         par_mois_c[(c.date.year, c.date.month)].append(lc)
         for s in c.services:

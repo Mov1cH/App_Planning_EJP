@@ -336,7 +336,10 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
         (f"{t.taux if t.taux is not None else '–'} %", f"de présence ({t.presents} sur {t.prevus})", True),
         (str(t.absences), "absences ou remplacements", False),
         (str(b.effectif_moyen if b.effectif_moyen is not None else "–"),
-         "personnes en moyenne" + (f" ({b.hommes_moyen} H, {b.femmes_moyen} F)" if b.hommes_moyen is not None else ""), False),
+         "personnes en moyenne" + (f" ({b.hommes_moyen} H, {b.femmes_moyen} F"
+                                    + (f", {b.ados_moyen} Ados" if b.ados_moyen is not None else "")
+                                    + (f", {b.enfants_moyen} Enfants" if b.enfants_moyen is not None else "")
+                                    + ")" if b.hommes_moyen is not None else ""), False),
     ]
     gap = 8
     cw = (W - 2 * M - 3 * gap) / 4
@@ -409,8 +412,9 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
 
     # Détail par culte
     y = titre_section(y, "Détail par culte")
-    colonnes = [("Date", M), ("Effectif", M + 120), ("Hommes", M + 190), ("Femmes", M + 250),
-                ("Services", M + 315), ("Présence", M + 380), ("Absences", M + 445)]
+    colonnes = [("Date", M), ("Effectif", M + 95), ("Hommes", M + 150), ("Femmes", M + 195),
+                ("Ados", M + 240), ("Enfants", M + 280), ("Services", M + 335), ("Présence", M + 400),
+                ("Absences", M + 465)]
     y = place(y, 30)
     c.setFillColor(gris); c.setFont("Inter-SemiBold", 8)
     for lib, x in colonnes:
@@ -424,6 +428,7 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
         vals = [f"{lc.date.day} {MOIS_FR[lc.date.month].lower()}",
                 "–" if lc.effectif is None else str(lc.effectif),
                 "–" if lc.hommes is None else str(lc.hommes), "–" if lc.femmes is None else str(lc.femmes),
+                "–" if lc.ados is None else str(lc.ados), "–" if lc.enfants is None else str(lc.enfants),
                 str(cp.services), "–" if cp.taux is None else f"{cp.taux} %", str(cp.absences)]
         for (lib, x), v in zip(colonnes, vals):
             c.setFillColor(alerte if lib == "Absences" and cp.absences else noir)

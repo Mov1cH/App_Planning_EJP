@@ -30,6 +30,8 @@
     <div class="effectif-fields">
       <label class="field"><span class="label">Hommes</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="hommes" value="{{ culte.hommes if culte and culte.hommes is not none else '' }}" data-eff></label>
       <label class="field"><span class="label">Femmes</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="femmes" value="{{ culte.femmes if culte and culte.femmes is not none else '' }}" data-eff></label>
+      <label class="field"><span class="label">Ados</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="ados" value="{{ culte.ados if culte and culte.ados is not none else '' }}" data-eff></label>
+      <label class="field"><span class="label">Enfants</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="enfants" value="{{ culte.enfants if culte and culte.enfants is not none else '' }}" data-eff></label>
       <div class="effectif-total"><span class="label">Total</span><b data-eff-total>–</b></div>
     </div>
   </section>

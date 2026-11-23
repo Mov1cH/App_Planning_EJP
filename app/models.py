@@ -141,6 +141,8 @@ class Culte(Base):
     date = Column(Date, index=True)
     hommes = Column(Integer, nullable=True)
     femmes = Column(Integer, nullable=True)
+    ados = Column(Integer, nullable=True)
+    enfants = Column(Integer, nullable=True)
     updated_at = Column(DateTime)
 
     services = relationship("Service", back_populates="culte", cascade="all, delete-orphan",

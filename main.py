@@ -1259,7 +1259,8 @@ async def post_pointage(request: Request, db: Session = Depends(get_db), eglise:
         return redirect("/stats")
     deps, prevus, servis = form.getlist("departement"), form.getlist("prevu"), form.getlist("servi")
     lignes = list(zip(deps, prevus, servis))[:300]
-    culte = stats.enregistrer_culte(db, eglise.id, jour, _entier(form.get("hommes")), _entier(form.get("femmes")), lignes)
+    culte = stats.enregistrer_culte(db, eglise.id, jour, _entier(form.get("hommes")), _entier(form.get("femmes")), lignes,
+                                     _entier(form.get("ados")), _entier(form.get("enfants")))
     flash(request, f"Culte du {_format_date(jour, 'jour')} {jour.year} enregistré : {len(culte.services)} service(s).")
     return redirect(f"/stats?type=mois&annee={jour.year}&n={jour.month}")
 
