@@ -21,3 +21,5 @@ seed_indisponibilites.py
 .env*.local
 .vercel
 docs/
+tests/
+requirements-dev.txt

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr" style="{{ accent(request) }}">
+<head>
+  {% include "_head.html" %}
+  <title>Jour J · Planning</title>
+</head>
+<body>
+<section id="jj" class="jj" data-date="{{ jour.isoformat() }}" data-a-un-deroule="{{ 'oui' if a_un_deroule else '' }}">
+  <header class="jj-head">
+    <h1 class="jj-title" id="jj-titre">Jour J</h1>
+    <a class="jj-exit" href="/deroule?date_str={{ jour.isoformat() }}">Quitter le jour J</a>
+  </header>
+
+  <p id="jj-erreur" class="jj-erreur" role="alert" hidden></p>
+
+  <div id="jj-contenu" hidden>
+    <section class="jj-now" id="jj-now" aria-labelledby="jj-now-h">
+      <div class="jj-now-top">
+        <h2 id="jj-now-h" class="jj-now-label">En cours</h2>
+        <span class="jj-now-clock" id="jj-heure"></span>
+      </div>
+      <p class="jj-now-title" id="jj-now-title"></p>
+      <p class="jj-now-detail" id="jj-now-detail"></p>
+      <p class="jj-chrono" id="jj-chrono" aria-live="off"></p>
+      <p class="sr-only" id="jj-annonce" aria-live="polite"></p>
+      <div class="jj-bar" aria-hidden="true"><div class="jj-bar-fill" id="jj-bar-fill"></div></div>
+    </section>
+
+    <p class="jj-retard" id="jj-retard" hidden></p>
+
+    <div class="jj-frise" id="jj-frise" role="img"></div>
+
+    <section class="jj-next" id="jj-next" hidden aria-labelledby="jj-next-h">
+      <h2 id="jj-next-h" class="jj-next-label">Ensuite</h2>
+      <p class="jj-next-title" id="jj-next-title"></p>
+      <p class="jj-next-detail" id="jj-next-detail"></p>
+    </section>
+
+    <button type="button" class="btn btn-acc jj-main" id="jj-btn-principal"></button>
+    <button type="button" class="jj-discret" id="jj-btn-pause" hidden></button>
+
+    <div id="jj-recommencer-zone">
+      <button type="button" class="jj-discret" id="jj-btn-recommencer">Recommencer depuis le début</button>
+      <div class="jj-confirm" id="jj-confirm" hidden>
+        <span>Remettre le jour J à zéro pour tous les écrans ?</span>
+        <button type="button" class="btn jj-confirm-oui" id="jj-confirm-oui">Oui, recommencer</button>
+        <button type="button" class="btn" id="jj-confirm-non">Annuler</button>
+      </div>
+    </div>
+  </div>
+</section>
+<script>
+(function () {
+  "use strict";
+  var racine = document.getElementById("jj");
+  var date = racine.dataset.date;
+  var aUnDeroule = !!racine.dataset.aUnDeroule;
+  var contenu = document.getElementById("jj-contenu");
+  var zoneErreur = document.getElementById("jj-erreur");
+  var decalageMs = 0;      // horloge serveur - horloge locale
+  var etat = null;         // dernier état connu du serveur
+  var version = -1;
+  var busy = false;
+
+  function erreur(msg) {
+    zoneErreur.textContent = msg;
+    zoneErreur.hidden = !msg;
+  }
+
+  function fmtHeure(iso) {
+    return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(new Date(iso));
+  }
+
+  function clock(ms) {
+    var s = Math.abs(Math.round(ms / 1000));
+    var mm = Math.floor((s % 3600) / 60), ss = String(s % 60).padStart(2, "0");
+    return s >= 3600 ? Math.floor(s / 3600) + ":" + String(mm).padStart(2, "0") + ":" + ss : mm + ":" + ss;
+  }
+
+  function humaine(minutes) {
+    var m = Math.abs(Math.round(minutes));
+    if (m < 60) return m + " min";
+    if (m < 1440) return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0");
+    return Math.floor(m / 1440) + " j " + Math.floor((m % 1440) / 60) + " h";
+  }
+
+  async function charger() {
+    try {
+      var rep = await fetch("/deroule/jour-j/etat?date_str=" + encodeURIComponent(date));
+      var data = await rep.json();
+      if (!data.ok) { erreur(data.erreur || "Erreur."); return; }
+      erreur("");
+      decalageMs = Date.now() - Date.parse(data.serveur_maintenant);
+      if (data.version !== version) { version = data.version; etat = data; rendreEtat(); }
+      else { etat = data; }
+      contenu.hidden = false;
+    } catch (e) {
+      erreur("Connexion impossible. Nouvelle tentative…");
+    }
+  }
+
+  async function action(nom) {
+    if (busy) return;
+    busy = true;
+    try {
+      var rep = await fetch("/deroule/jour-j/action", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: date, action: nom }),
+      });
+      var data = await rep.json();
+      if (!data.ok) { erreur(data.erreur || "Erreur."); return; }
+      erreur("");
+      decalageMs = Date.now() - Date.parse(data.serveur_maintenant);
+      version = data.version; etat = data; rendreEtat();
+    } catch (e) {
+      erreur("Action impossible, réessayez.");
+    } finally {
+      busy = false;
+    }
+  }
+
+  function maintenantServeur() { return Date.now() - decalageMs; }
+
+  function rendreEtat() {
+    var btn = document.getElementById("jj-btn-principal");
+    var btnPause = document.getElementById("jj-btn-pause");
+    var index = etat.index_courant;
+    var courant = index != null ? etat.etapes[index] : null;
+    var suivant = index != null ? etat.etapes[index + 1] : (!etat.demarre ? etat.etapes[0] : null);
+    var titreP = document.getElementById("jj-now-title");
+    var detailP = document.getElementById("jj-now-detail");
+    var next = document.getElementById("jj-next");
+
+    if (courant) {
+      titreP.textContent = courant.titre;
+      detailP.textContent = [courant.duree + " min", courant.personne].filter(Boolean).join(", ");
+    } else {
+      titreP.textContent = etat.termine ? "Déroulé terminé." : "Le culte n'a pas commencé.";
+      detailP.textContent = "";
+    }
+
+    if (suivant) {
+      next.hidden = false;
+      document.getElementById("jj-next-title").textContent = suivant.titre;
+      document.getElementById("jj-next-detail").textContent = [suivant.duree + " min", suivant.personne].filter(Boolean).join(", ");
+    } else {
+      next.hidden = true;
+    }
+
+    // Frise
+    var frise = document.getElementById("jj-frise");
+    frise.setAttribute("aria-label", "Étape " + Math.max(index != null ? index + 1 : 0, 0) + " sur " + etat.etapes.length);
+    frise.innerHTML = "";
+    etat.etapes.forEach(function (e, i) {
+      var seg = document.createElement("span");
+      seg.title = e.titre;
+      seg.style.flexGrow = e.duree || 1;
+      seg.className = "jj-frise-seg " + (index == null ? "jj-frise-a-venir" : i < index || etat.termine ? "jj-frise-passe" : i === index ? "jj-frise-en-cours" : "jj-frise-a-venir");
+      frise.appendChild(seg);
+    });
+
+    btn.hidden = etat.termine || etat.etapes.length === 0;
+    btn.textContent = !etat.demarre ? "Démarrer le culte" : (index != null && index < etat.etapes.length - 1 ? "Passer au suivant" : "Terminer le dernier élément");
+
+    btnPause.hidden = !etat.demarre || etat.termine;
+    btnPause.textContent = etat.en_pause ? "Reprendre" : "Stop";
+
+    var zoneRecommencer = document.getElementById("jj-recommencer-zone");
+    var btnRecommencer = document.getElementById("jj-btn-recommencer");
+    btnRecommencer.hidden = !etat.demarre;
+    btnRecommencer.className = etat.termine ? "btn jj-main" : "jj-discret";
+
+    tick();
+  }
+
+  function tick() {
+    if (!etat) return;
+    var now = maintenantServeur();
+    var index = etat.index_courant;
+    var courant = index != null ? etat.etapes[index] : null;
+    document.getElementById("jj-heure").textContent = fmtHeure(new Date(now).toISOString());
+
+    var jjNow = document.getElementById("jj-now");
+    var chrono = document.getElementById("jj-chrono");
+    var annonce = document.getElementById("jj-annonce");
+    var barre = document.getElementById("jj-bar-fill");
+
+    if (courant) {
+      var debutReel = etat.etapes[index].debut_reel ? Date.parse(etat.etapes[index].debut_reel) : null;
+      var pause = etat.en_pause;
+      var restantMs = etat.restant_ms != null
+        ? (pause ? etat.restant_ms : etat.restant_ms - (now - Date.parse(etat.serveur_maintenant)))
+        : courant.duree * 60000;
+      var over = restantMs < 0;
+      chrono.textContent = (over ? "-" : "") + clock(restantMs);
+      annonce.textContent = over ? "Dépassé de " + clock(restantMs) : "Reste " + clock(restantMs);
+      var progres = debutReel ? Math.min(1, Math.max(0, 1 - restantMs / ((courant.duree * 60000) || 1))) : 0;
+      barre.style.transform = "scaleX(" + progres + ")";
+      jjNow.classList.toggle("jj-now-depasse", over);
+    } else {
+      chrono.textContent = "–";
+      annonce.textContent = "";
+      barre.style.transform = "scaleX(0)";
+      jjNow.classList.remove("jj-now-depasse");
+    }
+
+    var retard = document.getElementById("jj-retard");
+    if (etat.demarre) {
+      // Le retard inclut le dépassement en cours, recalculé par le serveur à chaque action/poll (≤ 2 s d'écart).
+      var retardMs = etat.retard_ms;
+      retard.hidden = retardMs == null;
+      if (retardMs != null) {
+        var min = Math.round(retardMs / 60000);
+        retard.textContent = min > 0 ? "Retard : " + humaine(min) : min < 0 ? "Avance : " + humaine(min) : "À l'heure";
+        retard.className = "jj-retard " + (min > 0 ? "jj-retard-en-retard" : "jj-retard-ok");
+      }
+    } else {
+      retard.hidden = true;
+    }
+  }
+
+  document.getElementById("jj-btn-principal").addEventListener("click", function () { action("suivant"); });
+  document.getElementById("jj-btn-pause").addEventListener("click", function () {
+    action(etat && etat.en_pause ? "reprendre" : "stop");
+  });
+  document.getElementById("jj-btn-recommencer").addEventListener("click", function () {
+    if (etat && etat.termine) { action("recommencer"); return; }
+    document.getElementById("jj-confirm").hidden = false;
+  });
+  document.getElementById("jj-confirm-non").addEventListener("click", function () {
+    document.getElementById("jj-confirm").hidden = true;
+  });
+  document.getElementById("jj-confirm-oui").addEventListener("click", function () {
+    document.getElementById("jj-confirm").hidden = true;
+    action("recommencer");
+  });
+
+  // Veille écran (best effort, silencieux)
+  if ("wakeLock" in navigator) {
+    navigator.wakeLock.request("screen").catch(function () {});
+  }
+
+  setInterval(tick, 250);
+  setInterval(charger, 2000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) charger(); });
+  charger();
+
+  if (!aUnDeroule) {
+    erreur("Pas de déroulé enregistré pour cette date.");
+  }
+})();
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import json
 import re
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from urllib.parse import urlparse
 
@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import config, models, services, stats
-from app.database import SessionLocal, get_db
+from app import config, jourj, models, services, stats
+from app.database import SessionLocal, engine, get_db
 from app.emails import envoyer_code_verification, envoyer_email_reinitialisation
 from app.exports import nom_fichier, planning_csv, planning_pdf, stats_pdf
 from app.security import (
@@ -540,7 +540,28 @@ def tableau_de_bord(request: Request, db: Session = Depends(get_db), eglise: mod
         request, "home.html",
         current_eglise=eglise, dimanche=dimanche, equipe=equipe, planning=planning_mois,
         indispos=a_venir, stats=stats, aujourd_hui=aujourd_hui, jours_restants=(dimanche - aujourd_hui).days,
+        jour_j=_jour_j_actif(db, eglise.id, aujourd_hui, dimanche),
     )
+
+
+def _jour_j_actif(db: Session, eglise_id: int, aujourd_hui: date, dimanche: date) -> bool:
+    """Le jour du culte, de 2 h avant la première étape à 30 min après la fin prévue."""
+    if aujourd_hui != dimanche:
+        return False
+    deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise_id, models.Deroule.date == dimanche).first()
+    if not deroule:
+        return False
+    try:
+        data = json.loads(deroule.data)
+    except (TypeError, ValueError):
+        return False
+    etapes = _etapes_live(db, eglise_id, dimanche, data)
+    if not etapes:
+        return False
+    debuts = jourj.heures_prevues(dimanche, etapes)
+    fin_prevue = debuts[-1] + timedelta(minutes=etapes[-1].duree)
+    maintenant = datetime.now(jourj.PARIS)
+    return debuts[0] - timedelta(hours=2) <= maintenant <= fin_prevue + timedelta(minutes=30)
 
 
 # ---------------------------------------------------------------------------
@@ -1148,6 +1169,178 @@ async def post_deroule(request: Request, db: Session = Depends(get_db), eglise: 
     ligne.updated_at = datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Mode jour J (chronomètre du déroulé)
+# ---------------------------------------------------------------------------
+def _aware(valeur: Optional[datetime]) -> Optional[datetime]:
+    """DateTime venu de la base (naïf, UTC) -> aware UTC."""
+    return valeur.replace(tzinfo=timezone.utc) if valeur else None
+
+
+def _naif(valeur: Optional[datetime]) -> Optional[datetime]:
+    """Aware -> naïf UTC pour stockage en base (comme le reste de l'app)."""
+    return valeur.astimezone(timezone.utc).replace(tzinfo=None) if valeur else None
+
+
+def _etapes_live(db: Session, eglise_id: int, jour: date, data: dict) -> List[jourj.Etape]:
+    """Étapes du déroulé telles qu'affichées en direct (nom du responsable résolu depuis le planning si absent)."""
+    affectations = services.affectations_du_jour(db, eglise_id, jour)
+    out = []
+    for e in data.get("etapes", []):
+        personne = e.get("personne") or ""
+        if not personne and e.get("role_id"):
+            personne = affectations.get(int(e["role_id"]), "")
+        out.append(jourj.Etape(titre=e.get("titre") or "", personne=personne,
+                                duree=int(e.get("duree") or 0), debut=e.get("debut") or ""))
+    return out
+
+
+def _etat_depuis_ligne(ligne: models.DerouleLive) -> jourj.EtatLive:
+    etapes = [jourj.Etape(**e) for e in json.loads(ligne.etapes)]
+    reel = [
+        jourj.EtapeReelle(
+            debut=datetime.fromisoformat(r["debut"]) if r.get("debut") else None,
+            fin=datetime.fromisoformat(r["fin"]) if r.get("fin") else None,
+            pause_ms=r.get("pause_ms", 0),
+        )
+        for r in (json.loads(ligne.reel) if ligne.reel else [])
+    ]
+    return jourj.EtatLive(etapes=etapes, index_courant=ligne.index_courant, demarre_a=_aware(ligne.demarre_a),
+                          termine_a=_aware(ligne.termine_a), en_pause_depuis=_aware(ligne.en_pause_depuis), reel=reel)
+
+
+def _ecrire_etat(ligne: models.DerouleLive, etat: jourj.EtatLive) -> None:
+    ligne.index_courant = etat.index_courant
+    ligne.demarre_a = _naif(etat.demarre_a)
+    ligne.termine_a = _naif(etat.termine_a)
+    ligne.en_pause_depuis = _naif(etat.en_pause_depuis)
+    ligne.reel = json.dumps([
+        {"debut": r.debut.isoformat() if r.debut else None, "fin": r.fin.isoformat() if r.fin else None,
+         "pause_ms": r.pause_ms}
+        for r in etat.reel
+    ])
+    ligne.version = (ligne.version or 0) + 1
+
+
+def _etat_jour_j(request: Request, db: Session, eglise: models.Eglise, jour: date) -> dict:
+    """État public (JSON) du direct pour une date : étapes, position, chrono, retard."""
+    requete = db.query(models.DerouleLive).filter(models.DerouleLive.eglise_id == eglise.id,
+                                                   models.DerouleLive.date == jour)
+    if engine.dialect.name != "sqlite":
+        requete = requete.with_for_update()
+    ligne = requete.first()
+    maintenant = datetime.now(timezone.utc)
+
+    if ligne:
+        etat = _etat_depuis_ligne(ligne)
+    else:
+        deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id,
+                                                   models.Deroule.date == jour).first()
+        if not deroule:
+            return {"ok": False, "erreur": "Pas de déroulé enregistré pour cette date."}
+        try:
+            data = json.loads(deroule.data)
+        except (TypeError, ValueError):
+            data = {}
+        etat = jourj.EtatLive(etapes=_etapes_live(db, eglise.id, jour, data))
+
+    courant = etat.etapes[etat.index_courant] if etat.index_courant is not None else None
+    reelle = etat.reel[etat.index_courant] if etat.index_courant is not None else None
+    restant = jourj.restant_ms(courant, reelle, maintenant, etat.en_pause_depuis) if courant else None
+    retard = jourj.retard_ms(etat, jour, maintenant)
+    return {
+        "ok": True,
+        "version": ligne.version if ligne else 0,
+        "serveur_maintenant": maintenant.isoformat(),
+        "demarre": etat.demarre_a is not None,
+        "termine": etat.termine,
+        "en_pause": etat.en_pause,
+        "index_courant": etat.index_courant,
+        "retard_ms": retard,
+        "restant_ms": restant,
+        "etapes": [
+            {
+                "titre": e.titre, "personne": e.personne, "duree": e.duree,
+                "debut_reel": r.debut.isoformat() if r.debut else None,
+                "fin_reel": r.fin.isoformat() if r.fin else None,
+            }
+            for e, r in zip(etat.etapes, etat.reel)
+        ],
+    }
+
+
+@app.get("/deroule/jour-j", response_class=HTMLResponse)
+def get_jour_j(request: Request, date_str: Optional[str] = None, db: Session = Depends(get_db),
+               eglise: models.Eglise = Depends(get_current_eglise)):
+    try:
+        jour = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else services.prochain_dimanche()
+    except ValueError:
+        jour = services.prochain_dimanche()
+    deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id, models.Deroule.date == jour).first()
+    return render(request, "deroule_live.html", current_eglise=eglise, jour=jour, a_un_deroule=deroule is not None)
+
+
+@app.get("/deroule/jour-j/etat")
+def get_jour_j_etat(request: Request, date_str: str, db: Session = Depends(get_db),
+                    eglise: models.Eglise = Depends(get_current_eglise)):
+    try:
+        jour = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return JSONResponse({"ok": False, "erreur": "Date invalide."}, status_code=400)
+    return JSONResponse(_etat_jour_j(request, db, eglise, jour))
+
+
+@app.post("/deroule/jour-j/action")
+async def post_jour_j_action(request: Request, db: Session = Depends(get_db),
+                             eglise: models.Eglise = Depends(get_current_eglise)):
+    try:
+        corps = await request.json()
+        jour = datetime.strptime(str(corps.get("date")), "%Y-%m-%d").date()
+        action = str(corps.get("action"))
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "erreur": "Données invalides."}, status_code=400)
+    if action not in ("suivant", "stop", "reprendre", "recommencer"):
+        return JSONResponse({"ok": False, "erreur": "Action inconnue."}, status_code=400)
+
+    requete = db.query(models.DerouleLive).filter(models.DerouleLive.eglise_id == eglise.id,
+                                                   models.DerouleLive.date == jour)
+    if engine.dialect.name != "sqlite":
+        requete = requete.with_for_update()
+    ligne = requete.first()
+    maintenant = datetime.now(timezone.utc)
+
+    if not ligne:
+        deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id,
+                                                   models.Deroule.date == jour).first()
+        if not deroule:
+            return JSONResponse({"ok": False, "erreur": "Pas de déroulé enregistré pour cette date."}, status_code=400)
+        try:
+            data = json.loads(deroule.data)
+        except (TypeError, ValueError):
+            data = {}
+        ligne = models.DerouleLive(eglise_id=eglise.id, date=jour, version=0)
+        etapes_fig = _etapes_live(db, eglise.id, jour, data)
+        ligne.etapes = json.dumps([{"titre": e.titre, "personne": e.personne, "duree": e.duree, "debut": e.debut}
+                                    for e in etapes_fig], ensure_ascii=False)
+        etat = jourj.EtatLive(etapes=etapes_fig)
+        db.add(ligne)
+    else:
+        etat = _etat_depuis_ligne(ligne)
+
+    if action == "suivant":
+        jourj.avancer(etat, maintenant)
+    elif action == "stop":
+        jourj.stop(etat, maintenant)
+    elif action == "reprendre":
+        jourj.reprendre(etat, maintenant)
+    elif action == "recommencer":
+        jourj.recommencer(etat)
+
+    _ecrire_etat(ligne, etat)
+    db.commit()
+    return JSONResponse(_etat_jour_j(request, db, eglise, jour))
 
 
 @app.get("/planning/exporter/pdf")

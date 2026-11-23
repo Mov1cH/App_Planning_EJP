@@ -105,6 +105,23 @@ class Deroule(Base):
     updated_at = Column(DateTime)
 
 
+class DerouleLive(Base):
+    """État du direct (mode jour J) d'un déroulé — partagé par tous les écrans."""
+    __tablename__ = "deroules_live"
+    __table_args__ = (UniqueConstraint("eglise_id", "date", name="uq_deroule_live_eglise_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    date = Column(Date, index=True)
+    etapes = Column(Text)  # JSON : copie figée des étapes au démarrage
+    index_courant = Column(Integer, nullable=True)
+    demarre_a = Column(DateTime, nullable=True)
+    termine_a = Column(DateTime, nullable=True)
+    en_pause_depuis = Column(DateTime, nullable=True)
+    reel = Column(Text)  # JSON : par étape {debut, fin, pause_ms}
+    version = Column(Integer, default=0)
+
+
 class PropositionPlanning(Base):
     """Nouvelle combinaison proposée pour un mois, en attente de validation."""
     __tablename__ = "propositions_planning"

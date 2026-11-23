@@ -87,6 +87,7 @@
   </div>
   <div class="actions">
     <span class="dr-save-state" id="dr-state" aria-live="polite">{{ 'Enregistré' if deja_enregistre else 'Pas encore enregistré pour cette date' }}</span>
+    <a class="btn" href="/deroule/jour-j?date_str={{ jour.isoformat() }}">Mode jour J</a>
     <button class="btn" type="button" id="dr-save">Enregistrer</button>
     <button class="btn btn-acc" type="button" id="dr-export">{{ icon('download') }} Télécharger l'image</button>
   </div>

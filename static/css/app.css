@@ -754,3 +754,51 @@ a.bar-name:hover { color: var(--acc); }
 .radar-val { font-family: var(--display); font-weight: 800; fill: var(--acc); }
 .radar-label.is-zero .radar-val { fill: var(--faint); }
 @media (max-width: 760px) { .radar-label { font-size: 15px; } .radar { margin: 0 -12px; } }
+
+/* ---------- Jour J ---------- */
+.jj { position: fixed; inset: 0; z-index: 50; overflow-y: auto; background: var(--white); padding: 20px; display: flex; flex-direction: column; gap: 24px; }
+@media (min-width: 768px) { .jj { padding: 40px; } }
+.jj-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.jj-title { font-size: 22px; font-weight: 700; margin: 0; }
+.jj-exit { font-size: 14px; text-decoration: underline; color: var(--text); }
+.jj-erreur { background: #FBE9E4; color: #C2341B; padding: 12px 16px; border-radius: 10px; font-weight: 600; }
+
+.jj-now { width: 100%; padding: 24px; background: var(--acc); color: #F8F6F1; border-radius: 16px; display: flex; flex-direction: column; gap: 4px; }
+@media (min-width: 768px) { .jj-now { padding: 40px; } }
+.jj-now.jj-now-depasse { background: #C4211A; color: #fff; }
+.jj-now-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.jj-now-label { font-size: 14px; font-weight: 500; opacity: .8; margin: 0; }
+.jj-now-clock { font-size: 18px; font-weight: 700; opacity: .8; font-variant-numeric: tabular-nums; }
+.jj-now-title { font-size: 30px; font-weight: 700; line-height: 1.05; margin: 8px 0 0; }
+@media (min-width: 768px) { .jj-now-title { font-size: 48px; } }
+.jj-now-detail { font-size: 18px; opacity: .8; margin: 4px 0 0; }
+.jj-chrono { font-size: clamp(4rem, 18vw, 11rem); font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 12px 0 0; }
+.jj-bar { height: 12px; width: 100%; background: color-mix(in srgb, currentColor 20%, transparent); border-radius: 999px; margin-top: 16px; overflow: hidden; }
+.jj-bar-fill { height: 100%; width: 100%; background: currentColor; transform-origin: 0 50%; transform: scaleX(0); transition: transform 1s linear; border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .jj-bar-fill { transition: none; } }
+
+.jj-retard { align-self: flex-start; font-size: 20px; font-weight: 700; padding: 8px 16px; border-radius: 10px; background: #EFECE4; margin: 0; }
+.jj-retard-en-retard { background: #C2341B; color: #fff; }
+
+.jj-frise { display: flex; height: 16px; width: 100%; gap: 2px; }
+.jj-frise-seg { height: 100%; border-radius: 3px; }
+.jj-frise-passe { background: color-mix(in srgb, var(--acc) 40%, transparent); }
+.jj-frise-en-cours { background: var(--acc); }
+.jj-frise-a-venir { background: #EFECE4; }
+
+.jj-next { border-left: 4px solid var(--acc); padding-left: 16px; }
+.jj-next-label { font-size: 14px; color: var(--muted); margin: 0; font-weight: 500; }
+.jj-next-title { font-size: 24px; font-weight: 700; margin: 4px 0 0; }
+.jj-next-detail { color: var(--muted); margin: 4px 0 0; }
+
+.jj-main { width: 100%; height: 64px; font-size: 18px; }
+.jj-discret { min-height: 44px; padding: 0 16px; border: 0; background: none; color: var(--text); font-weight: 600; cursor: pointer; align-self: flex-start; text-decoration: underline; }
+#jj-recommencer-zone { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.jj-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; font-size: 14px; font-weight: 500; }
+.jj-confirm-oui { background: #C2341B; border-color: #C2341B; color: #fff; }
+
+/* Entrée Jour J sur le tableau de bord */
+.jj-entry { display: flex; flex-direction: column; gap: 4px; background: var(--acc); color: #F8F6F1; padding: 20px 24px; border-radius: 14px; text-decoration: none; margin-bottom: 20px; transition: transform .2s; }
+.jj-entry:hover { transform: translateY(-2px); }
+.jj-entry-title { font-size: 20px; font-weight: 700; }
+.jj-entry-hint { font-size: 14px; opacity: .85; }
