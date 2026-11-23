@@ -37,6 +37,8 @@ class FakeSheetsClient(ss.SheetsClient):
         self.noms = []
         self.ecritures_bloc = []
         self.ecritures_effectifs = []
+        self.onglets_crees = []
+        self.calculs_maj = []
 
     def ajouter_onglet(self, onglet, blocs, effectifs):
         self.onglets[onglet] = {"blocs": blocs, "effectifs": effectifs}
@@ -50,8 +52,13 @@ class FakeSheetsClient(ss.SheetsClient):
     def ecrire_bloc(self, onglet, bloc, lignes):
         if len(lignes) > bloc.nb_lignes:
             manquantes = len(lignes) - bloc.nb_lignes
+            point_insertion = bloc.ligne_fin  # une vraie insertDimension décale tout ce qui suit ce point
             bloc.valeurs += [("", "", "")] * manquantes
             bloc.ligne_fin += manquantes
+            for autre in self.onglets[onglet]["blocs"].values():
+                if autre is not bloc and autre.ligne_debut > point_insertion:
+                    autre.ligne_debut += manquantes
+                    autre.ligne_fin += manquantes
         bloc.valeurs = list(lignes) + [("", "", "")] * (bloc.nb_lignes - len(lignes))
         self.ecritures_bloc.append((onglet, list(lignes)))
 
@@ -69,6 +76,22 @@ class FakeSheetsClient(ss.SheetsClient):
 
     def ajouter_nom(self, nom):
         self.noms.append(nom)
+
+    def lister_onglets_mensuels(self):
+        return [o for o in self.onglets if ss.onglet_vers_date(o)]
+
+    def creer_onglet_mensuel(self, nouveau, depuis):
+        source = self.onglets[depuis]
+        blocs = {
+            numero: ss.BlocCulte(ligne_debut=b.ligne_debut, ligne_fin=b.ligne_fin, valeurs=[("", "", "")] * b.nb_lignes)
+            for numero, b in source["blocs"].items()
+        }
+        effectifs = {numero: ss.Effectifs(ligne=e.ligne) for numero, e in source["effectifs"].items()}
+        self.onglets[nouveau] = {"blocs": blocs, "effectifs": effectifs}
+        self.onglets_crees.append((nouveau, depuis))
+
+    def maj_calculs(self, nouveau, depuis):
+        self.calculs_maj.append((nouveau, depuis))
 
 
 JOUR = date(2026, 11, 22)  # un dimanche de novembre 2026, 4e du mois
@@ -162,3 +185,64 @@ def test_culte_avant_novembre_2026_est_ignore(db):
     r = ss.synchroniser_culte(db, client, culte)
     assert r.statut == "deja_rempli"
     assert client.ecritures_bloc == []
+
+
+def test_onglet_manquant_est_cree_par_duplication_du_dernier(db):
+    culte = _culte(db, date(2027, 1, 24), [("Accueil", "Marie", "Marie")])  # mois sans onglet encore
+    client, numero_nov = _client_avec_bloc(nb_lignes=1)  # crée l'onglet "Novembre 2026"
+    r = ss.synchroniser_culte(db, client, culte)
+    nouvel_onglet = ss.nom_onglet(2027, 1)
+    assert r.statut == "ok"
+    assert "Nouvel onglet" in r.message
+    assert client.onglets_crees == [(nouvel_onglet, ONGLET)]
+    assert client.calculs_maj == [(nouvel_onglet, ONGLET)]
+    assert nouvel_onglet in client.onglets
+    # L'onglet source n'a pas été touché.
+    assert client.onglets[ONGLET]["blocs"][numero_nov].valeurs == [("", "", "")]
+
+
+def test_onglet_existant_n_est_jamais_recree(db):
+    culte = _culte(db, JOUR, [("Accueil", "Marie", "Marie")])
+    client, _ = _client_avec_bloc(nb_lignes=1)
+    ss.synchroniser_culte(db, client, culte)
+    assert client.onglets_crees == []
+
+
+def test_aucun_onglet_mensuel_a_dupliquer_est_une_erreur(db):
+    culte = _culte(db, date(2027, 1, 24), [("Accueil", "Marie", "Marie")])
+    client = FakeSheetsClient()  # aucun onglet mensuel connu
+    r = ss.synchroniser_culte(db, client, culte)
+    assert r.statut == "erreur"
+
+
+def test_inserer_onglet_dans_formule():
+    formule = "=QUERY({'Juillet 2026'!A2:D; 'Septembre 2026'!A2:D; 'Décembre 2026'!A2:D})"
+    nouvelle = ss.inserer_onglet_dans_formule(formule, "Janvier 2027", "Décembre 2026")
+    assert nouvelle == "=QUERY({'Juillet 2026'!A2:D; 'Septembre 2026'!A2:D; 'Décembre 2026'!A2:D; 'Janvier 2027'!A2:D})"
+
+
+def test_inserer_onglet_dans_formule_sans_motif_ne_change_rien():
+    formule = "=SOMME(A1:A10)"
+    assert ss.inserer_onglet_dans_formule(formule, "Janvier 2027", "Décembre 2026") == formule
+
+
+def test_extension_d_un_bloc_ne_touche_pas_le_bloc_suivant(db):
+    """Un culte avec plus de lignes que son bloc insère des lignes à la fin du bloc (étend la fusion de
+    la colonne A) ; le bloc du culte suivant dans le même onglet doit juste être décalé, pas écrasé."""
+    client = FakeSheetsClient()
+    numero = ss.numero_culte_dans_mois(JOUR)
+    bloc1 = ss.BlocCulte(ligne_debut=2, ligne_fin=4, valeurs=[("", "", "")] * 3)
+    bloc2 = ss.BlocCulte(ligne_debut=5, ligne_fin=7, valeurs=[("Sono", "Paul", "Paul"), ("", "", ""), ("", "", "")])
+    client.ajouter_onglet(ONGLET, {numero: bloc1, numero + 1: bloc2},
+                          {numero: ss.Effectifs(ligne=3), numero + 1: ss.Effectifs(ligne=4)})
+
+    culte = _culte(db, JOUR, [("Accueil", "A", "A"), ("Modération", "B", "B"),
+                              ("Prédication", "C", "C"), ("Sainte Cène", "D", "D")])  # 4 lignes > les 3 du bloc
+    r = ss.synchroniser_culte(db, client, culte)
+
+    assert r.statut == "ok"
+    assert bloc1.nb_lignes == 4
+    assert bloc1.ligne_debut == 2 and bloc1.ligne_fin == 5
+    # Le bloc 2 est décalé d'une ligne, son contenu est intact.
+    assert bloc2.ligne_debut == 6 and bloc2.ligne_fin == 8
+    assert bloc2.valeurs == [("Sono", "Paul", "Paul"), ("", "", ""), ("", "", "")]

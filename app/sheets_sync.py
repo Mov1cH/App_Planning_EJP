@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -45,6 +46,36 @@ def numero_culte_dans_mois(jour: date) -> int:
     """Rang du dimanche dans son mois (1 à 5) — c'est le numéro affiché en colonne A du Sheet."""
     from .services import dimanches_du_mois
     return dimanches_du_mois(jour.year, jour.month).index(jour) + 1
+
+
+def onglet_vers_date(onglet: str) -> Optional[Tuple[int, int]]:
+    """« Décembre 2026 » -> (2026, 12), sinon None (onglet qui n'est pas un mois, ex. Data_Calc)."""
+    try:
+        mois_nom, annee_s = onglet.rsplit(" ", 1)
+        return int(annee_s), MOIS_FR_MAJ.index(mois_nom)
+    except (ValueError, IndexError):
+        return None
+
+
+def dernier_onglet_mensuel(onglets: List[str]) -> Optional[str]:
+    """Le plus récent des onglets mensuels connus (pour servir de modèle à dupliquer)."""
+    dates = [(onglet_vers_date(o), o) for o in onglets]
+    dates = [(d, o) for d, o in dates if d]
+    return max(dates, key=lambda x: x[0])[1] if dates else None
+
+
+def inserer_onglet_dans_formule(formule: str, nouvel_onglet: str, dernier_onglet: str) -> str:
+    """Ajoute le nouvel onglet dans une formule QUERY({'A'!plage; 'B'!plage; ...}), juste après le dernier onglet connu.
+
+    Ne modifie rien si le motif n'est pas trouvé (formule inattendue) : mieux vaut laisser Morel compléter à la main
+    que de corrompre une formule qu'on ne comprend pas.
+    """
+    motif = re.compile(r"'" + re.escape(dernier_onglet) + r"'!([A-Z]+\d*:[A-Z]+\d*)")
+    m = motif.search(formule)
+    if not m:
+        return formule
+    plage = m.group(1)
+    return formule[:m.end()] + f"; '{nouvel_onglet}'!{plage}" + formule[m.end():]
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +148,19 @@ class SheetsClient(ABC):
     @abstractmethod
     def ajouter_nom(self, nom: str) -> None: ...
 
+    @abstractmethod
+    def lister_onglets_mensuels(self) -> List[str]:
+        """Les onglets du Sheet qui sont des mois (« Décembre 2026 »…), pour trouver lequel dupliquer."""
+
+    @abstractmethod
+    def creer_onglet_mensuel(self, nouveau: str, depuis: str) -> None:
+        """Duplique l'onglet ``depuis``, le renomme ``nouveau``, vide les valeurs (A2:D et O3:R7, fusions et
+        validations conservées) et remet 1 à 5 en colonne A. Ne touche jamais un onglet déjà existant."""
+
+    @abstractmethod
+    def maj_calculs(self, nouveau: str, depuis: str) -> None:
+        """Ajoute ``nouveau`` dans les formules QUERY de Data_Calc qui listaient déjà ``depuis``."""
+
 
 # ---------------------------------------------------------------------------
 # Rapprochement département / personne avec l'orthographe du Sheet
@@ -169,6 +213,26 @@ def _bloc_attendu(lignes: List[Tuple[str, str, str]], nb_lignes: int) -> List[Tu
 
 
 # ---------------------------------------------------------------------------
+# Onglet du mois : le créer s'il manque (section 3.4), sans jamais toucher un onglet existant
+# ---------------------------------------------------------------------------
+def assurer_onglet(client: SheetsClient, annee: int, mois: int) -> Tuple[str, Optional[str]]:
+    onglet = nom_onglet(annee, mois)
+    if client.onglet_existe(onglet):
+        return onglet, None
+    dernier = dernier_onglet_mensuel(client.lister_onglets_mensuels())
+    if not dernier:
+        raise RuntimeError("Aucun onglet mensuel existant à dupliquer dans le Sheet.")
+    client.creer_onglet_mensuel(onglet, dernier)
+    client.maj_calculs(onglet, dernier)
+    message = (
+        f"Nouvel onglet « {onglet} » créé à partir de « {dernier} ». "
+        "Les graphiques du Tableau de bord annuel et la ligne « Mois / Services » de Data_Calc "
+        "ne se mettent pas à jour tout seuls : à vérifier à la main."
+    )
+    return onglet, message
+
+
+# ---------------------------------------------------------------------------
 # Synchronisation d'un culte
 # ---------------------------------------------------------------------------
 def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: models.Culte) -> ResultatCulte:
@@ -177,10 +241,8 @@ def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: model
     if culte.date < DEPUIS:
         return ResultatCulte(culte.id, "deja_rempli", "Avant le 1er novembre 2026 : non synchronisé.")
 
-    onglet = nom_onglet(culte.date.year, culte.date.month)
     try:
-        if not client.onglet_existe(onglet):
-            return ResultatCulte(culte.id, "erreur", f"Onglet « {onglet} » introuvable dans le Sheet.")
+        onglet, message_creation = assurer_onglet(client, culte.date.year, culte.date.month)
 
         numero = numero_culte_dans_mois(culte.date)
         bloc = client.lire_bloc(onglet, numero)
@@ -218,10 +280,12 @@ def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: model
         precedente.ecrit_le = datetime.utcnow()
         if bloc_ecrit:
             precedente.empreinte = empreinte_bloc(_bloc_attendu(lignes, bloc.nb_lignes))
-            precedente.statut, precedente.message = "ok", ""
+            precedente.statut, precedente.message = "ok", (message_creation or "")
         else:
             precedente.statut = "deja_rempli"
             precedente.message = f"Culte du {culte.date.day:02d}/{culte.date.month:02d} : déjà rempli dans le Sheet, non modifié."
+            if message_creation:
+                precedente.message = message_creation + " " + precedente.message
         db.commit()
         return ResultatCulte(culte.id, precedente.statut, precedente.message)
     except Exception as exc:  # noqa: BLE001 — on ne doit jamais faire échouer le pointage pour ça
@@ -385,3 +449,52 @@ class GoogleSheetsClient(SheetsClient):
             json={"values": [[nom]]},
         )
         r.raise_for_status()
+
+    def lister_onglets_mensuels(self) -> List[str]:
+        return [f["properties"]["title"] for f in self._metadonnees().get("sheets", [])
+                if onglet_vers_date(f["properties"]["title"])]
+
+    def creer_onglet_mensuel(self, nouveau: str, depuis: str) -> None:
+        feuille = self._feuille(depuis)
+        if feuille is None:
+            raise RuntimeError(f"Onglet modèle « {depuis} » introuvable.")
+        reponse = self._post(f"{SHEETS_API}/{self._sheet_id}:batchUpdate", {"requests": [{
+            "duplicateSheet": {
+                "sourceSheetId": feuille["properties"]["sheetId"],
+                "insertSheetIndex": feuille["properties"]["index"] + 1,
+                "newSheetName": nouveau,
+            }
+        }]})
+        nouveau_sheet_id = reponse["replies"][0]["duplicateSheet"]["properties"]["sheetId"]
+
+        # Fusions et validations sont conservées par duplicateSheet ; seules les valeurs sont vidées.
+        self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchClear",
+                   {"ranges": [f"'{nouveau}'!A2:D500", f"'{nouveau}'!O3:R7"]})
+
+        nouvelle_feuille = self._feuille(nouveau)
+        lignes_a = sorted(
+            m["startRowIndex"] + 1 for m in nouvelle_feuille.get("merges", [])
+            if m["sheetId"] == nouveau_sheet_id and m["startColumnIndex"] == 0 and m["endColumnIndex"] == 1
+        )
+        if lignes_a:
+            self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchUpdate", {
+                "valueInputOption": "USER_ENTERED",
+                "data": [{"range": f"'{nouveau}'!A{ligne}", "values": [[i + 1]]} for i, ligne in enumerate(lignes_a)],
+            })
+
+    def maj_calculs(self, nouveau: str, depuis: str) -> None:
+        """Best-effort : insère ``nouveau`` dans les formules QUERY de Data_Calc (colonnes A, D, G) qui citaient
+        déjà ``depuis``. La ligne « Mois / Services » (J/K) n'a pas de format connu : signalée à Morel (voir
+        le message retourné par ``assurer_onglet``), pas touchée ici pour ne pas corrompre une formule mal comprise.
+        """
+        for colonne in ("A", "D", "G"):
+            cellule = f"'Data_Calc'!{colonne}1"
+            valeurs = self._get(f"{SHEETS_API}/{self._sheet_id}/values/{cellule}", valueRenderOption="FORMULA").get("values", [])
+            formule = valeurs[0][0] if valeurs and valeurs[0] else ""
+            if not formule:
+                continue
+            nouvelle = inserer_onglet_dans_formule(formule, nouveau, depuis)
+            if nouvelle != formule:
+                self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchUpdate", {
+                    "valueInputOption": "USER_ENTERED", "data": [{"range": cellule, "values": [[nouvelle]]}],
+                })
