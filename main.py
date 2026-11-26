@@ -1415,18 +1415,68 @@ def get_stats(request: Request, type: Optional[str] = None, annee: Optional[int]
                   dernier=_dernier_dimanche(), recents=[r[0] for r in recents])
 
 
+def _exporter_vers_sheet(request: Request, db: Session, client, eglise_id: int, prefixe: str = "") -> None:
+    r = sheets_sync.synchroniser_plage(db, client, eglise_id)
+    message = prefixe + f"{len(r.ok)} culte(s) écrit(s) dans le Sheet, {len(r.deja_rempli)} déjà rempli(s) à la main (non modifiés)"
+    if r.erreurs:
+        message += f", {len(r.erreurs)} erreur(s)"
+    flash(request, message + ".", "attention" if r.erreurs else "succes")
+
+
 @app.post("/stats/sheet/synchroniser")
 def post_synchroniser_sheet(request: Request, db: Session = Depends(get_db),
                             eglise: models.Eglise = Depends(get_current_eglise)):
+    """D'abord récupérer ce qui a été saisi à la main dans le Sheet (avec aperçu), ensuite seulement exporter."""
     client = sheets_sync.client_depuis_env()
     if client is None:
         flash(request, "Synchronisation Google Sheet non configurée.", "attention")
         return redirect("/stats")
-    r = sheets_sync.synchroniser_plage(db, client, eglise.id)
-    message = f"{len(r.ok)} culte(s) écrit(s), {len(r.deja_rempli)} déjà rempli(s) dans le Sheet"
-    if r.erreurs:
-        message += f", {len(r.erreurs)} erreur(s)"
-    flash(request, message + ".", "attention" if r.erreurs else "succes")
+    try:
+        items = sheets_sync.preparer_import(db, client, eglise.id)
+    except Exception as exc:  # noqa: BLE001
+        flash(request, f"Lecture du Google Sheet impossible : {exc}", "attention")
+        return redirect("/stats")
+    # Blocs identiques au site : on les marque comme connus, sans rien modifier.
+    sheets_sync.appliquer_import(db, eglise.id, [i for i in items if i.action == "identique"])
+    if any(i.action != "identique" for i in items):
+        return redirect("/stats/sheet/recuperer")
+    _exporter_vers_sheet(request, db, client, eglise.id)
+    return redirect("/stats")
+
+
+@app.get("/stats/sheet/recuperer", response_class=HTMLResponse)
+def get_recuperer_sheet(request: Request, db: Session = Depends(get_db),
+                        eglise: models.Eglise = Depends(get_current_eglise)):
+    """Aperçu de l'import Sheet -> site : rien n'est modifié tant que ce n'est pas confirmé."""
+    client = sheets_sync.client_depuis_env()
+    if client is None:
+        flash(request, "Synchronisation Google Sheet non configurée.", "attention")
+        return redirect("/stats")
+    try:
+        items = [i for i in sheets_sync.preparer_import(db, client, eglise.id) if i.action != "identique"]
+    except Exception as exc:  # noqa: BLE001
+        flash(request, f"Lecture du Google Sheet impossible : {exc}", "attention")
+        return redirect("/stats")
+    return render(request, "sheet_import.html", current_eglise=eglise, items=items)
+
+
+@app.post("/stats/sheet/recuperer/confirmer")
+async def post_confirmer_recuperation(request: Request, db: Session = Depends(get_db),
+                                      eglise: models.Eglise = Depends(get_current_eglise)):
+    client = sheets_sync.client_depuis_env()
+    if client is None:
+        flash(request, "Synchronisation Google Sheet non configurée.", "attention")
+        return redirect("/stats")
+    form = await request.form()
+    cles = [str(c) for c in form.getlist("cle")]
+    try:
+        # On relit le Sheet : c'est son état actuel qui est importé, pas celui de l'aperçu affiché plus tôt.
+        items = sheets_sync.preparer_import(db, client, eglise.id)
+        n = sheets_sync.appliquer_import(db, eglise.id, items, cles)
+    except Exception as exc:  # noqa: BLE001
+        flash(request, f"Import depuis le Google Sheet impossible : {exc}", "attention")
+        return redirect("/stats")
+    _exporter_vers_sheet(request, db, client, eglise.id, prefixe=f"{n} culte(s) récupéré(s) depuis le Sheet. ")
     return redirect("/stats")
 
 

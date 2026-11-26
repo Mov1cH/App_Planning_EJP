@@ -802,3 +802,12 @@ a.bar-name:hover { color: var(--acc); }
 .jj-entry:hover { transform: translateY(-2px); }
 .jj-entry-title { font-size: 20px; font-weight: 700; }
 .jj-entry-hint { font-size: 14px; opacity: .85; }
+
+/* Récupération depuis le Google Sheet */
+.sheet-import-item { align-items: flex-start; }
+.sheet-import-check { display: flex; align-items: center; gap: 10px; flex: none; min-height: 44px; }
+.sheet-import-check input { width: 22px; height: 22px; }
+.sheet-import-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 12px; }
+.sheet-import-cols ul { margin: 6px 0; padding-left: 18px; font-size: 14px; }
+.sheet-import-actions { margin: 20px 0 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 600px) { .sheet-import-item { flex-direction: column; gap: 8px; } }

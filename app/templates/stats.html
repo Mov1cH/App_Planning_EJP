@@ -12,6 +12,7 @@
     <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ precedente.annee }}&n={{ precedente.n }}" aria-label="Période précédente">{{ icon('chevron-left') }}</a>
     <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ suivante.annee }}&n={{ suivante.n }}" aria-label="Période suivante">{{ icon('chevron-right') }}</a>
     {% if not b.vide %}<a class="btn" href="/stats/export/pdf?type={{ p.type }}&annee={{ p.annee }}&n={{ p.n }}">{{ icon('download') }} PDF</a>{% endif %}
+    <a class="btn" href="/stats/sheet/recuperer">Récupérer depuis le Google Sheet</a>
     <form action="/stats/sheet/synchroniser" method="post"><button class="btn" type="submit" data-loading>Synchroniser le Google Sheet</button></form>
     <a class="btn btn-acc" href="/stats/culte?date_str={{ (a_pointer[-1] if a_pointer else dernier).isoformat() }}">{{ icon('check-square') }} Pointer un culte</a>
   </div>

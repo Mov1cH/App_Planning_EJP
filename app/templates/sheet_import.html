@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Récupérer depuis le Google Sheet{% endblock %}
+{% block page_class %}paper{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="/stats">{{ icon('arrow-left') }} Stats</a>
+    <h1 class="page-title">Récupérer depuis le Google Sheet</h1>
+    <p class="page-sub">Ces cultes ont été saisis ou modifiés à la main dans le Sheet. Le Sheet fait foi : cochez ceux à reprendre dans le site, puis confirmez. Rien n'est modifié avant votre confirmation.</p>
+  </div>
+</div>
+
+{% if not items %}
+<div class="empty">
+  <h2>Rien à récupérer</h2>
+  <p>Le site contient déjà tout ce qui a été saisi dans le Google Sheet depuis le 1<sup>er</sup> novembre 2026.</p>
+  <form action="/stats/sheet/synchroniser" method="post"><button class="btn btn-acc" type="submit" data-loading>Envoyer le site vers le Sheet</button></form>
+</div>
+{% else %}
+<form action="/stats/sheet/recuperer/confirmer" method="post">
+  <ul class="rows sheet-import">
+    {% for it in items %}
+    <li class="sheet-import-item">
+      <label class="sheet-import-check">
+        <input type="checkbox" name="cle" value="{{ it.cle }}" checked>
+        <span class="date">{{ it.jour|date_fr('jour') }}</span>
+      </label>
+      <div class="grow">
+        <div class="title">
+          {% if it.action == 'creer' %}Nouveau pointage, créé depuis le Sheet{% else %}Le pointage du site sera remplacé par celui du Sheet{% endif %}
+        </div>
+        <div class="meta">{{ it.onglet }} · culte {{ it.numero }}</div>
+        <div class="sheet-import-cols">
+          {% if it.action == 'remplacer' %}
+          <div>
+            <b>Avant (site)</b>
+            <ul>{% for d, p, s in it.avant_lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
+            <p class="meta">Effectif : {{ it.avant_effectifs.hommes if it.avant_effectifs.hommes is not none else '–' }} H · {{ it.avant_effectifs.femmes if it.avant_effectifs.femmes is not none else '–' }} F · {{ it.avant_effectifs.ados if it.avant_effectifs.ados is not none else '–' }} Ados · {{ it.avant_effectifs.enfants if it.avant_effectifs.enfants is not none else '–' }} Enfants</p>
+          </div>
+          {% endif %}
+          <div>
+            <b>{% if it.action == 'remplacer' %}Après (Sheet){% else %}Depuis le Sheet{% endif %}</b>
+            <ul>{% for d, p, s in it.lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
+            <p class="meta">Effectif : {{ it.effectifs.hommes if it.effectifs.hommes is not none else '–' }} H · {{ it.effectifs.femmes if it.effectifs.femmes is not none else '–' }} F · {{ it.effectifs.ados if it.effectifs.ados is not none else '–' }} Ados · {{ it.effectifs.enfants if it.effectifs.enfants is not none else '–' }} Enfants</p>
+          </div>
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="actions sheet-import-actions">
+    <a class="btn" href="/stats">Annuler</a>
+    <button class="btn btn-acc" type="submit" data-loading>Confirmer l'import</button>
+  </div>
+  <p class="meta">Après l'import, les cultes du site qui manquent encore dans le Sheet y seront ajoutés, sans jamais écraser ce qui y est déjà.</p>
+</form>
+{% endif %}
+{% endblock %}

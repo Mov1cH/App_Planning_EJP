@@ -246,3 +246,111 @@ def test_extension_d_un_bloc_ne_touche_pas_le_bloc_suivant(db):
     # Le bloc 2 est décalé d'une ligne, son contenu est intact.
     assert bloc2.ligne_debut == 6 and bloc2.ligne_fin == 8
     assert bloc2.valeurs == [("Sono", "Paul", "Paul"), ("", "", ""), ("", "", "")]
+
+
+# ---------------------------------------------------------------------------
+# Import Sheet -> site (saisies manuelles dans le Sheet)
+# ---------------------------------------------------------------------------
+def _eglise(db):
+    eglise = models.Eglise(nom_eglise="Import", email="import@test.local", mot_de_passe_hash="x")
+    db.add(eglise)
+    db.commit()
+    return eglise
+
+
+def _client_import(valeurs, effectifs=None, nb_lignes=4):
+    client = FakeSheetsClient()
+    numero = ss.numero_culte_dans_mois(JOUR)
+    valeurs = list(valeurs) + [("", "", "")] * (nb_lignes - len(valeurs))
+    bloc = ss.BlocCulte(ligne_debut=53, ligne_fin=53 + nb_lignes - 1, valeurs=valeurs)
+    client.ajouter_onglet(ONGLET, {numero: bloc}, {numero: effectifs or ss.Effectifs(ligne=2 + numero)})
+    return client, numero
+
+
+def test_import_bloc_manuel_cree_le_culte(db):
+    eglise = _eglise(db)
+    client, _ = _client_import([("Accueil", "Anne", "Anne"), ("Projection", "", "Jeremie")],
+                               ss.Effectifs(ligne=6, hommes="14", femmes="19", ados="3", enfants=""))
+    items = ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))
+    assert [(i.jour, i.action) for i in items] == [(JOUR, "creer")]
+    assert stats_culte(db, eglise.id) is None  # aperçu : rien n'est écrit
+
+    assert ss.appliquer_import(db, eglise.id, items) == 1
+    culte = stats_culte(db, eglise.id)
+    assert [(s.departement, s.prevu, s.servi) for s in culte.services] == [("Accueil", "Anne", "Anne"), ("Projection", "", "Jeremie")]
+    assert (culte.hommes, culte.femmes, culte.ados, culte.enfants) == (14, 19, 3, None)
+
+
+def test_bloc_ecrit_par_le_site_non_reimporte(db):
+    eglise = _eglise(db)
+    culte = models.Culte(eglise_id=eglise.id, date=JOUR)
+    db.add(culte)
+    db.commit()
+    db.add(models.Service(culte_id=culte.id, eglise_id=eglise.id, departement="Accueil", prevu="Anne", servi="Anne", position=0))
+    db.commit()
+    db.refresh(culte)
+    client, numero = _client_import([], nb_lignes=3)
+    assert ss.synchroniser_culte(db, client, culte).statut == "ok"  # le site écrit le bloc
+    assert ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30)) == []
+
+
+def test_conflit_apercu_sans_ecriture_puis_confirmation(db):
+    eglise = _eglise(db)
+    from app import stats
+    stats.enregistrer_culte(db, eglise.id, JOUR, 10, 10, [("Accueil", "Anne", "Anne")])
+    client, _ = _client_import([("Accueil", "Anne", "Armel")])  # corrigé à la main dans le Sheet
+    items = ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))
+    assert [i.action for i in items] == ["remplacer"]
+    assert items[0].avant_lignes == [("Accueil", "Anne", "Anne")]
+    assert stats_culte(db, eglise.id).services[0].servi == "Anne"  # pas encore confirmé
+
+    ss.appliquer_import(db, eglise.id, items, cles=[])  # rien de coché
+    assert stats_culte(db, eglise.id).services[0].servi == "Anne"
+
+    ss.appliquer_import(db, eglise.id, items, cles=[JOUR.isoformat()])
+    culte = stats_culte(db, eglise.id)
+    assert culte.services[0].servi == "Armel"
+    assert (culte.hommes, culte.femmes) == (10, 10)  # cases vides du Sheet : valeurs du site conservées
+
+
+def test_apres_import_l_export_ne_reecrit_pas_le_bloc(db):
+    eglise = _eglise(db)
+    client, numero = _client_import([("Accueil", "Anne", "Anne")])
+    items = ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))
+    ss.appliquer_import(db, eglise.id, items)
+    r = ss.synchroniser_culte(db, client, stats_culte(db, eglise.id))
+    assert r.statut == "ok"
+    assert client.ecritures_bloc == []  # déjà à jour, aucune écriture
+    assert ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30)) == []
+
+
+def test_import_nom_avec_espace_final_rapproche(db):
+    eglise = _eglise(db)
+    from app import stats
+    stats.ajouter_stars(db, eglise.id, ["Débora"])
+    client, _ = _client_import([("Prédication", "Débora ", "débora ")])
+    items = ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))
+    ss.appliquer_import(db, eglise.id, items)
+    s = stats_culte(db, eglise.id).services[0]
+    assert (s.prevu, s.servi) == ("Débora", "Débora")
+    assert [x.nom for x in stats.stars(db, eglise.id)] == ["Débora"]  # pas de doublon
+
+
+def test_effectifs_corriges_a_la_main_apres_export_sont_importes(db):
+    eglise = _eglise(db)
+    from app import stats
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Anne")])
+    client, numero = _client_import([], nb_lignes=3)
+    ss.synchroniser_culte(db, client, culte)
+    client.onglets[ONGLET]["effectifs"][numero].hommes = "15"  # corrigé dans le Sheet
+    items = ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))
+    assert [i.action for i in items] == ["remplacer"]
+    assert items[0].lignes == [("Accueil", "Anne", "Anne")]  # les services du site sont gardés
+    ss.appliquer_import(db, eglise.id, items)
+    assert stats_culte(db, eglise.id).hommes == 15
+
+
+def stats_culte(db, eglise_id):
+    from app import stats
+    db.expire_all()
+    return stats.culte_du_jour(db, eglise_id, JOUR)

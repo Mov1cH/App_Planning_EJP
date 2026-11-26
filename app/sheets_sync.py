@@ -266,7 +266,10 @@ def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: model
         bloc_ecrit = bloc.vide or (
             bool(precedente and precedente.empreinte) and empreinte_bloc(bloc.valeurs) == precedente.empreinte
         )
-        if bloc_ecrit:
+        # Déjà à jour (ex. bloc récupéré depuis le Sheet par l'import) : aucune écriture inutile.
+        if bloc_ecrit and not bloc.vide and _bloc_attendu(lignes, bloc.nb_lignes) == [tuple(v) for v in bloc.valeurs]:
+            pass
+        elif bloc_ecrit:
             client.ecrire_bloc(onglet, bloc, lignes)
 
         eff_sheet = client.lire_effectifs(onglet, numero)
@@ -317,6 +320,156 @@ def synchroniser_plage(db: Session, client: Optional[SheetsClient], eglise_id: i
         elif r.statut == "erreur":
             resultat.erreurs.append((culte.date, r.message))
     return resultat
+
+
+# ---------------------------------------------------------------------------
+# Import Sheet -> site : récupérer ce que Morel a saisi à la main dans le Sheet
+# ---------------------------------------------------------------------------
+# Un bloc rempli dont le contenu n'est PAS celui que le site y a écrit (empreinte SheetSync absente ou
+# différente) est une saisie manuelle : le Sheet fait foi. Rien n'est modifié dans le site sans
+# confirmation : ``preparer_import`` ne fait que lire et calculer un aperçu, ``appliquer_import`` écrit.
+
+EFFECTIFS = ("hommes", "femmes", "ados", "enfants")
+
+
+@dataclass
+class ImportCulte:
+    jour: date
+    onglet: str
+    numero: int
+    action: str  # "creer" | "remplacer" | "identique"
+    lignes: List[Tuple[str, str, str]]  # ce qui sera enregistré dans le site (après)
+    effectifs: Dict[str, Optional[int]]  # après
+    avant_lignes: List[Tuple[str, str, str]] = field(default_factory=list)
+    avant_effectifs: Dict[str, Optional[int]] = field(default_factory=dict)
+    empreinte: str = ""  # empreinte du bloc tel qu'il est dans le Sheet
+
+    @property
+    def cle(self) -> str:
+        return self.jour.isoformat()
+
+
+def _entier_sheet(valeur) -> Optional[int]:
+    """« 14 », 14, « 14,0 » -> 14 ; vide ou illisible -> None."""
+    if valeur in (None, ""):
+        return None
+    try:
+        return int(float(str(valeur).replace(",", ".").replace("\u202f", "").replace(" ", "")))
+    except ValueError:
+        return None
+
+
+def _normaliser(lignes) -> List[Tuple[str, str, str]]:
+    return [(cle_nom(d), cle_nom(p), cle_nom(s)) for d, p, s in lignes]
+
+
+def _mois_entre(debut: date, fin: date) -> List[Tuple[int, int]]:
+    mois, (a, m) = [], (debut.year, debut.month)
+    while (a, m) <= (fin.year, fin.month):
+        mois.append((a, m))
+        a, m = (a + 1, 1) if m == 12 else (a, m + 1)
+    return mois
+
+
+def preparer_import(db: Session, client: Optional[SheetsClient], eglise_id: int,
+                    depuis: date = DEPUIS, jusqu_a: Optional[date] = None) -> List[ImportCulte]:
+    """Aperçu de l'import : lit le Sheet, compare avec le site, n'écrit RIEN."""
+    from .services import dimanches_du_mois
+    from . import stats
+
+    if client is None:
+        return []
+    jusqu_a = jusqu_a or date.today()
+    noms_site = [x.nom for x in stats.stars(db, eglise_id)]
+    deps_site = [d.nom for d in stats.departements(db, eglise_id)]
+    resultat: List[ImportCulte] = []
+
+    for annee, mois in _mois_entre(depuis, jusqu_a):
+        onglet = nom_onglet(annee, mois)
+        if not client.onglet_existe(onglet):
+            continue  # jamais de création d'onglet à l'import
+        for numero, jour in enumerate(dimanches_du_mois(annee, mois), start=1):
+            if jour < depuis or jour > jusqu_a:
+                continue
+            bloc = client.lire_bloc(onglet, numero)
+            if bloc is None:
+                continue
+            try:
+                eff_sheet = client.lire_effectifs(onglet, numero)
+            except (KeyError, LookupError):
+                eff_sheet = None
+            effectifs_sheet = {k: _entier_sheet(getattr(eff_sheet, k, None)) for k in EFFECTIFS}
+            if bloc.vide and all(v is None for v in effectifs_sheet.values()):
+                continue  # rien de saisi dans le Sheet pour ce culte
+
+            culte = stats.culte_du_jour(db, eglise_id, jour)
+            empreinte = empreinte_bloc([tuple(v) for v in bloc.valeurs])
+            bloc_du_site = False
+            if culte is not None:
+                sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+                # Bloc écrit par le site (ou déjà importé) : les lignes ne sont pas une saisie manuelle,
+                # mais des effectifs ont pu être corrigés à la main dans le Sheet depuis.
+                bloc_du_site = bool(sync and sync.empreinte == empreinte)
+
+            lignes = [
+                (_rapprocher(stats.nettoyer(d, 60), deps_site),
+                 _rapprocher(stats.nettoyer(p), noms_site),
+                 _rapprocher(stats.nettoyer(sv), noms_site))
+                for d, p, sv in bloc.valeurs if (d or p or sv)
+            ]
+            lignes = [l for l in lignes if l[0] and (l[1] or l[2])]
+
+            avant_lignes = [(x.departement, x.prevu, x.servi) for x in culte.services] if culte else []
+            avant_eff = {k: getattr(culte, k) for k in EFFECTIFS} if culte else {k: None for k in EFFECTIFS}
+            # Une case vide dans le Sheet ne vide pas une valeur déjà connue du site.
+            apres_eff = {k: (effectifs_sheet[k] if effectifs_sheet[k] is not None else avant_eff[k]) for k in EFFECTIFS}
+            if bloc.vide or bloc_du_site:
+                lignes = list(avant_lignes)  # seuls les effectifs viennent du Sheet
+
+            if bloc_du_site and apres_eff == avant_eff:
+                continue  # rien de nouveau dans le Sheet
+            if culte is None:
+                action = "creer"
+            elif _normaliser(lignes) == _normaliser(avant_lignes) and apres_eff == avant_eff:
+                action = "identique"
+            else:
+                action = "remplacer"
+            resultat.append(ImportCulte(jour, onglet, numero, action, lignes, apres_eff,
+                                        avant_lignes, avant_eff, empreinte))
+    return resultat
+
+
+def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles: Optional[List[str]] = None) -> int:
+    """Écrit dans le site les cultes de l'aperçu (seulement ceux de ``cles`` si fourni). Retourne le nombre modifié."""
+    from . import stats
+
+    n = 0
+    nouveaux_noms: List[str] = []
+    for it in items:
+        if cles is not None and it.cle not in cles:
+            continue
+        if it.action != "identique":
+            culte = stats.enregistrer_culte(
+                db, eglise_id, it.jour, it.effectifs["hommes"], it.effectifs["femmes"], it.lignes,
+                it.effectifs["ados"], it.effectifs["enfants"],
+            )
+            n += 1
+        else:
+            culte = stats.culte_du_jour(db, eglise_id, it.jour)
+        nouveaux_noms += [nom for _, p, s in it.lignes for nom in (p, s) if nom]
+        # Le bloc du Sheet est désormais « connu » du site : l'export ne le considérera plus comme manuel.
+        sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+        if not sync:
+            sync = models.SheetSync(culte_id=culte.id)
+            db.add(sync)
+        sync.empreinte = it.empreinte
+        sync.ecrit_le = datetime.utcnow()
+        sync.statut = "importe"
+        sync.message = f"Récupéré depuis le Sheet ({it.onglet}, culte {it.numero})."
+        db.commit()
+    if nouveaux_noms:
+        stats.ajouter_stars(db, eglise_id, nouveaux_noms)
+    return n
 
 
 # ---------------------------------------------------------------------------
