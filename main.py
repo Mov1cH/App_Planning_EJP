@@ -5,6 +5,7 @@ Lancer en local :
     (ou, accessible depuis un téléphone du même réseau : --host 0.0.0.0 --port 8000)
 """
 import json
+import os
 import re
 import logging
 from collections import defaultdict
@@ -1389,9 +1390,37 @@ def _entier(valeur: Optional[str]) -> Optional[int]:
         return None
 
 
+def _filet_import_sheet(request: Request, db: Session, eglise: models.Eglise) -> None:
+    """Filet de sécurité du webhook : au plus toutes les 10 min, récupère les modifications du Sheet faites sur
+    les cultes du mois en cours et du mois précédent. Ne bloque jamais l'affichage des stats."""
+    client = None
+    etat = db.query(models.SyncEtat).filter(models.SyncEtat.eglise_id == eglise.id).first()
+    if etat and etat.dernier_import and datetime.utcnow() - etat.dernier_import < timedelta(minutes=10):
+        return
+    client = sheets_sync.client_depuis_env()
+    if client is None:
+        return
+    aujourd_hui = date.today()
+    precedent = (aujourd_hui.replace(day=1) - timedelta(days=1))
+    jours = [d for a, m in ((precedent.year, precedent.month), (aujourd_hui.year, aujourd_hui.month))
+             for d in services.dimanches_du_mois(a, m) if d <= aujourd_hui]
+    try:
+        r = sheets_sync.importer_auto(db, client, eglise.id, jours=jours)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log.warning("Filet d'import du Sheet : %s", exc)
+        return
+    if r.importes:
+        flash(request, f"{len(r.importes)} culte(s) mis à jour depuis le Google Sheet.")
+    if r.conflits:
+        flash(request, f"{len(r.conflits)} culte(s) modifié(s) à la fois sur le site et dans le Sheet : "
+                       "à trancher dans « Récupérer depuis le Google Sheet ».", "attention")
+
+
 @app.get("/stats", response_class=HTMLResponse)
 def get_stats(request: Request, type: Optional[str] = None, annee: Optional[int] = None, n: Optional[int] = None,
               db: Session = Depends(get_db), eglise: models.Eglise = Depends(get_current_eglise)):
+    _filet_import_sheet(request, db, eglise)
     p = _periode_demandee(type, annee, n)
     b = stats.bilan(db, eglise.id, p)
     recents = (db.query(models.Culte.date).filter(models.Culte.eglise_id == eglise.id)
@@ -1473,11 +1502,85 @@ async def post_confirmer_recuperation(request: Request, db: Session = Depends(ge
         # On relit le Sheet : c'est son état actuel qui est importé, pas celui de l'aperçu affiché plus tôt.
         items = sheets_sync.preparer_import(db, client, eglise.id)
         n = sheets_sync.appliquer_import(db, eglise.id, items, cles)
+        # Conflits non cochés : c'est la version du site qui est gardée et renvoyée vers le Sheet.
+        sheets_sync.garder_version_site(db, eglise.id, [i for i in items if i.conflit and i.cle not in cles])
     except Exception as exc:  # noqa: BLE001
         flash(request, f"Import depuis le Google Sheet impossible : {exc}", "attention")
         return redirect("/stats")
     _exporter_vers_sheet(request, db, client, eglise.id, prefixe=f"{n} culte(s) récupéré(s) depuis le Sheet. ")
     return redirect("/stats")
+
+
+def _eglise_du_sheet(db: Session) -> Optional[models.Eglise]:
+    """L'église dont le pointage est relié au Google Sheet : SHEET_EGLISE_ID si défini, sinon celle qui a le
+    plus de cultes pointés (une seule église utilise la synchro aujourd'hui)."""
+    eglise_id = os.getenv("SHEET_EGLISE_ID")
+    if eglise_id and eglise_id.isdigit():
+        return db.query(models.Eglise).filter(models.Eglise.id == int(eglise_id)).first()
+    ligne = (db.query(models.Culte.eglise_id, func.count(models.Culte.id))
+             .group_by(models.Culte.eglise_id).order_by(func.count(models.Culte.id).desc()).first())
+    return db.query(models.Eglise).filter(models.Eglise.id == ligne[0]).first() if ligne else None
+
+
+@app.post("/api/sheet/modification", include_in_schema=False)
+async def webhook_sheet(request: Request, db: Session = Depends(get_db)):
+    """Appelé par le script Apps Script du Google Sheet à chaque modification d'un onglet mensuel."""
+    import hmac
+    attendu = os.getenv("SHEET_WEBHOOK_SECRET", "")
+    recu = request.headers.get("X-Sheet-Secret", "")
+    if not attendu or not hmac.compare_digest(attendu.encode(), recu.encode()):
+        return JSONResponse({"ok": False}, status_code=401)
+    try:
+        corps = await request.json()
+        onglet, ligne = str(corps.get("onglet", "")), int(corps.get("ligne", 0))
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "erreur": "Données invalides."}, status_code=400)
+    client = sheets_sync.client_depuis_env()
+    eglise = _eglise_du_sheet(db)
+    if client is None or eglise is None:
+        return JSONResponse({"ok": False, "erreur": "Synchro non configurée."}, status_code=503)
+    try:
+        jour = sheets_sync.jour_depuis_cellule(client, onglet, ligne)
+        if jour is None or jour < sheets_sync.DEPUIS:
+            return {"ok": True, "ignore": True}
+        r = sheets_sync.importer_auto(db, client, eglise.id, jours=[jour])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Webhook Sheet : %s", exc)
+        return JSONResponse({"ok": False, "erreur": "Lecture du Sheet impossible."}, status_code=502)
+    return {"ok": True, "jour": jour.isoformat(), "importe": bool(r.importes), "conflit": bool(r.conflits)}
+
+
+@app.get("/stats/historique", response_class=HTMLResponse)
+def get_historique(request: Request, db: Session = Depends(get_db),
+                   eglise: models.Eglise = Depends(get_current_eglise)):
+    versions = (db.query(models.CulteHistorique).filter(models.CulteHistorique.eglise_id == eglise.id)
+                .order_by(models.CulteHistorique.cree_le.desc()).limit(200).all())
+    lignes = []
+    for v in versions:
+        try:
+            contenu = json.loads(v.contenu)
+        except ValueError:
+            contenu = {}
+        lignes.append({"v": v, "services": contenu.get("services", []), "effectifs": contenu.get("effectifs", {})})
+    conflits = (db.query(models.SheetSync, models.Culte).join(models.Culte, models.Culte.id == models.SheetSync.culte_id)
+                .filter(models.Culte.eglise_id == eglise.id, models.SheetSync.statut.in_(["conflit", "deja_rempli"]))
+                .order_by(models.Culte.date).all())
+    return render(request, "historique.html", current_eglise=eglise, lignes=lignes, conflits=conflits)
+
+
+@app.post("/stats/historique/{historique_id}/restaurer")
+def post_restaurer(request: Request, historique_id: int, db: Session = Depends(get_db),
+                   eglise: models.Eglise = Depends(get_current_eglise)):
+    culte = sheets_sync.restaurer_version(db, eglise.id, historique_id)
+    if culte is None:
+        flash(request, "Version introuvable.", "attention")
+        return redirect("/stats/historique")
+    flash(request, f"Version du {_format_date(culte.date, 'jour')} {culte.date.year} restaurée dans le site "
+                   "(la version remplacée reste dans l'historique).")
+    r = sheets_sync.synchroniser_culte(db, sheets_sync.client_depuis_env(), culte)
+    if r.statut in ("erreur", "deja_rempli") and r.message:
+        flash(request, r.message, "attention")
+    return redirect("/stats/historique")
 
 
 @app.get("/stats/culte", response_class=HTMLResponse)
@@ -1523,6 +1626,9 @@ async def post_pointage(request: Request, db: Session = Depends(get_db), eglise:
     resultat = sheets_sync.synchroniser_culte(db, sheets_sync.client_depuis_env(), culte)
     if resultat.statut == "erreur":
         flash(request, "Enregistré. Le Google Sheet n'a pas pu être mis à jour, réessayez depuis Stats.", "attention")
+    elif resultat.statut == "deja_rempli" and resultat.message:
+        flash(request, "Enregistré sur le site. " + resultat.message
+              + " Les deux versions sont gardées : comparez-les dans « Récupérer depuis le Google Sheet ».", "attention")
     return redirect(f"/stats?type=mois&annee={jour.year}&n={jour.month}")
 
 
@@ -1603,6 +1709,7 @@ def supprimer_departement(dep_id: int, request: Request, db: Session = Depends(g
 @app.get("/stats/export/pdf")
 def export_stats_pdf(type: Optional[str] = None, annee: Optional[int] = None, n: Optional[int] = None,
                      db: Session = Depends(get_db), eglise: models.Eglise = Depends(get_current_eglise)):
+    _filet_import_sheet(request, db, eglise)
     p = _periode_demandee(type, annee, n)
     b = stats.bilan(db, eglise.id, p)
     couleur = config.COULEURS.get(eglise.couleur or organisation_de(eglise)["couleur"], config.COULEURS[config.COULEUR_DEFAUT])

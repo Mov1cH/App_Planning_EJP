@@ -855,3 +855,9 @@ a.bar-name:hover { color: var(--acc); }
   .tb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tb-kpi b { font-size: 26px; }
 }
+.sheet-import-conflit { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: var(--alert-soft); color: var(--alert); font-size: 14px; }
+.sheet-import-conflit a { text-decoration: underline; }
+.historique-item { align-items: flex-start; flex-wrap: wrap; }
+.historique-item details { margin-top: 6px; font-size: 14px; }
+.historique-item summary { cursor: pointer; color: var(--muted); min-height: 32px; }
+.historique-detail { margin: 6px 0 0; padding-left: 18px; }

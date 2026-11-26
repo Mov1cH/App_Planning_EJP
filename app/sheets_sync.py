@@ -236,6 +236,13 @@ def assurer_onglet(client: SheetsClient, annee: int, mois: int) -> Tuple[str, Op
 # Synchronisation d'un culte
 # ---------------------------------------------------------------------------
 def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: models.Culte) -> ResultatCulte:
+    """Site -> Sheet pour un culte.
+
+    Miroir : le Sheet est mis à jour avec la version du site, MAIS seulement là où le Sheet n'a pas été
+    modifié à la main depuis la dernière synchro (sinon c'est une modification du Sheet pas encore
+    récupérée : on n'écrase rien, on signale). Toute version du Sheet remplacée est d'abord gardée dans
+    l'historique. Le site ne vide jamais un bloc du Sheet.
+    """
     if client is None:
         return ResultatCulte(culte.id, "desactive")
     if culte.date < DEPUIS:
@@ -256,42 +263,64 @@ def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: model
             noms_connus.append(nom)
         lignes = construire_lignes(culte, noms_connus)  # ré-applique avec les noms venant d'être ajoutés
 
-        effectifs = {"hommes": culte.hommes, "femmes": culte.femmes, "ados": culte.ados, "enfants": culte.enfants}
-        effectifs = {k: v for k, v in effectifs.items() if v is not None}
-
-        precedente = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
-
-        # Le bloc n'est réécrit que s'il est vide, ou si son contenu actuel est exactement celui que le site
-        # y avait écrit la dernière fois (empreinte identique) : personne ne l'a touché à la main depuis.
-        bloc_ecrit = bloc.vide or (
-            bool(precedente and precedente.empreinte) and empreinte_bloc(bloc.valeurs) == precedente.empreinte
-        )
-        # Déjà à jour (ex. bloc récupéré depuis le Sheet par l'import) : aucune écriture inutile.
-        if bloc_ecrit and not bloc.vide and _bloc_attendu(lignes, bloc.nb_lignes) == [tuple(v) for v in bloc.valeurs]:
-            pass
-        elif bloc_ecrit:
-            client.ecrire_bloc(onglet, bloc, lignes)
-
+        sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+        eff_sync = _effectifs_sync(sync)
+        actuel = [tuple(v) for v in bloc.valeurs]
         eff_sheet = client.lire_effectifs(onglet, numero)
-        a_ecrire_eff = {cle: v for cle, v in effectifs.items() if not _non_vide(getattr(eff_sheet, cle))}
+        eff_sheet_int = {k: _entier_sheet(getattr(eff_sheet, k, None)) for k in EFFECTIFS}
+
+        # Le Sheet est « connu » s'il est vide ou s'il contient exactement ce qui a été synchronisé la dernière fois.
+        bloc_connu = bloc.vide or bool(sync and sync.empreinte and empreinte_bloc(actuel) == sync.empreinte)
+        attendu = _bloc_attendu(lignes, bloc.nb_lignes)
+        ecrire = bloc_connu and bool(lignes) and attendu != actuel
+        conflit_bloc = not bloc_connu and _normaliser([l for l in actuel if any(l)]) != _normaliser(lignes)
+
+        a_ecrire_eff: Dict[str, int] = {}
+        conflit_eff = []
+        for k in EFFECTIFS:
+            v_site = getattr(culte, k)
+            v_sheet = eff_sheet_int[k]
+            if v_site is None or v_site == v_sheet:
+                continue
+            if v_sheet is None or (k in eff_sync and eff_sync[k] == v_sheet):
+                a_ecrire_eff[k] = v_site  # case vide, ou valeur venant d'une synchro précédente
+            else:
+                conflit_eff.append(k)  # corrigée à la main dans le Sheet : on n'y touche pas
+
+        # Ce qui va être remplacé dans le Sheet part d'abord dans l'historique.
+        if (ecrire and not bloc.vide) or any(eff_sheet_int[k] is not None for k in a_ecrire_eff):
+            historiser(db, culte.eglise_id, culte.date, "sheet", "remplacée par une modification du site",
+                       [l for l in actuel if any(l)], eff_sheet_int)
+            db.commit()  # l'ancienne version est en sécurité AVANT d'écrire dans le Sheet
+        if ecrire:
+            client.ecrire_bloc(onglet, bloc, lignes)
+            actuel = _bloc_attendu(lignes, bloc.nb_lignes)
         if a_ecrire_eff:
             client.ecrire_effectifs(onglet, numero, a_ecrire_eff)
+            eff_sheet_int.update(a_ecrire_eff)
 
-        if not precedente:
-            precedente = models.SheetSync(culte_id=culte.id)
-            db.add(precedente)
-        precedente.ecrit_le = datetime.utcnow()
-        if bloc_ecrit:
-            precedente.empreinte = empreinte_bloc(_bloc_attendu(lignes, bloc.nb_lignes))
-            precedente.statut, precedente.message = "ok", (message_creation or "")
+        if not sync:
+            sync = models.SheetSync(culte_id=culte.id)
+            db.add(sync)
+        sync.ecrit_le = datetime.utcnow()
+        # On ne mémorise comme « synchronisé » que ce qui est identique des deux côtés : une saisie manuelle
+        # du Sheet pas encore récupérée reste ainsi détectable par l'import.
+        if bloc_connu or not conflit_bloc:
+            sync.empreinte = empreinte_bloc(actuel)
+        sync.effectifs = json.dumps({k: eff_sheet_int[k] for k in EFFECTIFS
+                                     if eff_sheet_int[k] is not None and eff_sheet_int[k] == getattr(culte, k)})
+        if conflit_bloc or conflit_eff:
+            sync.statut = "deja_rempli"
+            sync.message = (f"Culte du {culte.date.day:02d}/{culte.date.month:02d} : modifié à la main dans le Sheet "
+                            "et pas encore récupéré, le Sheet n'a pas été écrasé.")
         else:
-            precedente.statut = "deja_rempli"
-            precedente.message = f"Culte du {culte.date.day:02d}/{culte.date.month:02d} : déjà rempli dans le Sheet, non modifié."
-            if message_creation:
-                precedente.message = message_creation + " " + precedente.message
+            sync.statut, sync.message = "ok", ""
+        if message_creation:
+            sync.message = (message_creation + " " + (sync.message or "")).strip()
         db.commit()
-        return ResultatCulte(culte.id, precedente.statut, precedente.message)
+        return ResultatCulte(culte.id, sync.statut, sync.message or "")
     except Exception as exc:  # noqa: BLE001 — on ne doit jamais faire échouer le pointage pour ça
+        db.rollback()
         log.warning("Synchro Sheet échouée pour le culte %s : %s", culte.id, exc)
         return ResultatCulte(culte.id, "erreur", str(exc))
 
@@ -343,6 +372,8 @@ class ImportCulte:
     avant_lignes: List[Tuple[str, str, str]] = field(default_factory=list)
     avant_effectifs: Dict[str, Optional[int]] = field(default_factory=dict)
     empreinte: str = ""  # empreinte du bloc tel qu'il est dans le Sheet
+    effectifs_sheet: Dict[str, Optional[int]] = field(default_factory=dict)
+    conflit: bool = False  # le site ET le Sheet ont changé depuis la dernière synchro
 
     @property
     def cle(self) -> str:
@@ -359,6 +390,13 @@ def _entier_sheet(valeur) -> Optional[int]:
         return None
 
 
+def _effectifs_sync(sync) -> Dict[str, int]:
+    try:
+        return {k: int(v) for k, v in json.loads(sync.effectifs).items()} if sync and sync.effectifs else {}
+    except (TypeError, ValueError):
+        return {}
+
+
 def _normaliser(lignes) -> List[Tuple[str, str, str]]:
     return [(cle_nom(d), cle_nom(p), cle_nom(s)) for d, p, s in lignes]
 
@@ -371,25 +409,51 @@ def _mois_entre(debut: date, fin: date) -> List[Tuple[int, int]]:
     return mois
 
 
+def historiser(db: Session, eglise_id: int, jour: date, source: str, raison: str,
+               services: List[Tuple[str, str, str]], effectifs: Dict[str, Optional[int]]) -> None:
+    """Met de côté une version d'un culte avant qu'elle soit remplacée. Ne garde rien si elle est vide."""
+    if not services and all(v is None for v in effectifs.values()):
+        return
+    db.add(models.CulteHistorique(
+        eglise_id=eglise_id, date=jour, source=source, raison=raison, cree_le=datetime.utcnow(),
+        contenu=json.dumps({"services": [list(l) for l in services],
+                            "effectifs": {k: effectifs.get(k) for k in EFFECTIFS}}, ensure_ascii=False),
+    ))
+
+
+def _site_modifie_depuis_sync(culte, sync) -> bool:
+    """Le site a-t-il été modifié depuis la dernière synchro (ou jamais synchronisé alors qu'il a du contenu) ?"""
+    if culte is None:
+        return False
+    if sync is None or sync.ecrit_le is None:
+        return bool(culte.services) or any(getattr(culte, k) is not None for k in EFFECTIFS)
+    return bool(culte.updated_at and (culte.updated_at - sync.ecrit_le).total_seconds() > 1)
+
+
 def preparer_import(db: Session, client: Optional[SheetsClient], eglise_id: int,
-                    depuis: date = DEPUIS, jusqu_a: Optional[date] = None) -> List[ImportCulte]:
-    """Aperçu de l'import : lit le Sheet, compare avec le site, n'écrit RIEN."""
+                    depuis: date = DEPUIS, jusqu_a: Optional[date] = None,
+                    jours: Optional[List[date]] = None) -> List[ImportCulte]:
+    """Ce qui a changé dans le Sheet depuis la dernière synchro, comparé au site. N'écrit RIEN."""
     from .services import dimanches_du_mois
     from . import stats
 
     if client is None:
         return []
     jusqu_a = jusqu_a or date.today()
+    if jours:
+        mois_a_lire = sorted({(j.year, j.month) for j in jours})
+    else:
+        mois_a_lire = _mois_entre(depuis, jusqu_a)
     noms_site = [x.nom for x in stats.stars(db, eglise_id)]
     deps_site = [d.nom for d in stats.departements(db, eglise_id)]
     resultat: List[ImportCulte] = []
 
-    for annee, mois in _mois_entre(depuis, jusqu_a):
+    for annee, mois in mois_a_lire:
         onglet = nom_onglet(annee, mois)
         if not client.onglet_existe(onglet):
             continue  # jamais de création d'onglet à l'import
         for numero, jour in enumerate(dimanches_du_mois(annee, mois), start=1):
-            if jour < depuis or jour > jusqu_a:
+            if jour < depuis or (jours is None and jour > jusqu_a) or (jours is not None and jour not in jours):
                 continue
             bloc = client.lire_bloc(onglet, numero)
             if bloc is None:
@@ -403,44 +467,52 @@ def preparer_import(db: Session, client: Optional[SheetsClient], eglise_id: int,
                 continue  # rien de saisi dans le Sheet pour ce culte
 
             culte = stats.culte_du_jour(db, eglise_id, jour)
+            sync = (db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+                    if culte is not None else None)
             empreinte = empreinte_bloc([tuple(v) for v in bloc.valeurs])
-            bloc_du_site = False
-            if culte is not None:
-                sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
-                # Bloc écrit par le site (ou déjà importé) : les lignes ne sont pas une saisie manuelle,
-                # mais des effectifs ont pu être corrigés à la main dans le Sheet depuis.
-                bloc_du_site = bool(sync and sync.empreinte == empreinte)
+            eff_sync = _effectifs_sync(sync)
 
-            lignes = [
+            avant_lignes = [(x.departement, x.prevu, x.servi) for x in culte.services] if culte else []
+            avant_eff = {k: getattr(culte, k) for k in EFFECTIFS} if culte else {k: None for k in EFFECTIFS}
+
+            lignes_sheet = [
                 (_rapprocher(stats.nettoyer(d, 60), deps_site),
                  _rapprocher(stats.nettoyer(p), noms_site),
                  _rapprocher(stats.nettoyer(sv), noms_site))
                 for d, p, sv in bloc.valeurs if (d or p or sv)
             ]
-            lignes = [l for l in lignes if l[0] and (l[1] or l[2])]
+            lignes_sheet = [l for l in lignes_sheet if l[0] and (l[1] or l[2])]
 
-            avant_lignes = [(x.departement, x.prevu, x.servi) for x in culte.services] if culte else []
-            avant_eff = {k: getattr(culte, k) for k in EFFECTIFS} if culte else {k: None for k in EFFECTIFS}
-            # Une case vide dans le Sheet ne vide pas une valeur déjà connue du site.
-            apres_eff = {k: (effectifs_sheet[k] if effectifs_sheet[k] is not None else avant_eff[k]) for k in EFFECTIFS}
-            if bloc.vide or bloc_du_site:
-                lignes = list(avant_lignes)  # seuls les effectifs viennent du Sheet
+            # Lignes : celles du Sheet si son bloc a changé depuis la dernière synchro. Un bloc vidé dans le
+            # Sheet n'efface jamais les services du site.
+            bloc_change = bool(lignes_sheet) and not (sync and sync.empreinte == empreinte)
+            lignes = lignes_sheet if bloc_change else list(avant_lignes)
+            # Effectifs : une valeur du Sheet ne compte que si elle a été changée dans le Sheet
+            # (différente de ce qui a été synchronisé). Une case vide n'efface jamais une valeur du site.
+            apres_eff = dict(avant_eff)
+            for k in EFFECTIFS:
+                v = effectifs_sheet[k]
+                if v is not None and v != avant_eff[k] and eff_sync.get(k) != v:
+                    apres_eff[k] = v
 
-            if bloc_du_site and apres_eff == avant_eff:
-                continue  # rien de nouveau dans le Sheet
             if culte is None:
                 action = "creer"
             elif _normaliser(lignes) == _normaliser(avant_lignes) and apres_eff == avant_eff:
                 action = "identique"
             else:
                 action = "remplacer"
-            resultat.append(ImportCulte(jour, onglet, numero, action, lignes, apres_eff,
-                                        avant_lignes, avant_eff, empreinte))
+            conflit = action == "remplacer" and _site_modifie_depuis_sync(culte, sync)
+            resultat.append(ImportCulte(jour, onglet, numero, action, lignes, apres_eff, avant_lignes, avant_eff,
+                                        empreinte, effectifs_sheet, conflit))
     return resultat
 
 
-def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles: Optional[List[str]] = None) -> int:
-    """Écrit dans le site les cultes de l'aperçu (seulement ceux de ``cles`` si fourni). Retourne le nombre modifié."""
+def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles: Optional[List[str]] = None,
+                     raison: str = "remplacée par une modification du Sheet") -> int:
+    """Écrit dans le site les cultes donnés (seulement ceux de ``cles`` si fourni). Retourne le nombre modifié.
+
+    La version du site remplacée est d'abord gardée dans l'historique.
+    """
     from . import stats
 
     n = 0
@@ -449,6 +521,9 @@ def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles
         if cles is not None and it.cle not in cles:
             continue
         if it.action != "identique":
+            if it.action == "remplacer":
+                historiser(db, eglise_id, it.jour, "site", raison, it.avant_lignes, it.avant_effectifs)
+                db.commit()  # l'ancienne version est en sécurité AVANT de la remplacer
             culte = stats.enregistrer_culte(
                 db, eglise_id, it.jour, it.effectifs["hommes"], it.effectifs["femmes"], it.lignes,
                 it.effectifs["ados"], it.effectifs["enfants"],
@@ -457,12 +532,14 @@ def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles
         else:
             culte = stats.culte_du_jour(db, eglise_id, it.jour)
         nouveaux_noms += [nom for _, p, s in it.lignes for nom in (p, s) if nom]
-        # Le bloc du Sheet est désormais « connu » du site : l'export ne le considérera plus comme manuel.
+        # Le bloc et les effectifs du Sheet sont désormais « connus » : ils ne seront plus vus comme manuels.
         sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
         if not sync:
             sync = models.SheetSync(culte_id=culte.id)
             db.add(sync)
         sync.empreinte = it.empreinte
+        sync.effectifs = json.dumps({k: v for k, v in it.effectifs_sheet.items()
+                                     if v is not None and v == getattr(culte, k)})
         sync.ecrit_le = datetime.utcnow()
         sync.statut = "importe"
         sync.message = f"Récupéré depuis le Sheet ({it.onglet}, culte {it.numero})."
@@ -470,6 +547,101 @@ def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles
     if nouveaux_noms:
         stats.ajouter_stars(db, eglise_id, nouveaux_noms)
     return n
+
+
+@dataclass
+class ResultatImport:
+    importes: List[date] = field(default_factory=list)
+    conflits: List[date] = field(default_factory=list)
+
+
+def importer_auto(db: Session, client: Optional[SheetsClient], eglise_id: int,
+                  jours: Optional[List[date]] = None, depuis: date = DEPUIS) -> ResultatImport:
+    """Récupération automatique (webhook du Sheet, filet de sécurité) : applique sans confirmation tout ce qui a
+    changé dans le Sheet, SAUF les conflits (site et Sheet modifiés tous les deux), laissés à la page d'aperçu."""
+    r = ResultatImport()
+    if client is None:
+        return r
+    items = preparer_import(db, client, eglise_id, depuis=depuis, jours=jours)
+    sans_conflit = [i for i in items if not i.conflit]
+    appliquer_import(db, eglise_id, sans_conflit)
+    r.importes = [i.jour for i in sans_conflit if i.action != "identique"]
+    for i in items:
+        if i.conflit:
+            r.conflits.append(i.jour)
+            from . import stats
+            culte = stats.culte_du_jour(db, eglise_id, i.jour)
+            sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+            if not sync:
+                sync = models.SheetSync(culte_id=culte.id)
+                db.add(sync)
+            sync.statut = "conflit"
+            sync.message = (f"Culte du {i.jour.day:02d}/{i.jour.month:02d} : modifié à la fois sur le site et dans "
+                            "le Sheet. À trancher dans « Récupérer depuis le Google Sheet ».")
+            db.commit()
+    etat = db.query(models.SyncEtat).filter(models.SyncEtat.eglise_id == eglise_id).first()
+    if not etat:
+        etat = models.SyncEtat(eglise_id=eglise_id)
+        db.add(etat)
+    etat.dernier_import = datetime.utcnow()
+    db.commit()
+    return r
+
+
+def garder_version_site(db: Session, eglise_id: int, items: List[ImportCulte]) -> None:
+    """Conflit tranché en faveur du site : la version actuelle du Sheet est marquée comme « connue », pour que
+    l'export suivant la remplace par celle du site (en la gardant d'abord dans l'historique)."""
+    from . import stats
+
+    for it in items:
+        culte = stats.culte_du_jour(db, eglise_id, it.jour)
+        if culte is None:
+            continue
+        sync = db.query(models.SheetSync).filter(models.SheetSync.culte_id == culte.id).first()
+        if not sync:
+            sync = models.SheetSync(culte_id=culte.id)
+            db.add(sync)
+        sync.empreinte = it.empreinte
+        sync.effectifs = json.dumps({k: v for k, v in it.effectifs_sheet.items() if v is not None})
+        sync.statut, sync.message = "ok", ""
+    db.commit()
+
+
+def restaurer_version(db: Session, eglise_id: int, historique_id: int) -> Optional[models.Culte]:
+    """Remet dans le site une version de l'historique. La version actuelle part elle-même dans l'historique."""
+    from . import stats
+
+    h = db.query(models.CulteHistorique).filter(models.CulteHistorique.id == historique_id,
+                                                 models.CulteHistorique.eglise_id == eglise_id).first()
+    if not h:
+        return None
+    contenu = json.loads(h.contenu)
+    actuel = stats.culte_du_jour(db, eglise_id, h.date)
+    if actuel:
+        historiser(db, eglise_id, h.date, "site", "remplacée par une restauration",
+                   [(x.departement, x.prevu, x.servi) for x in actuel.services],
+                   {k: getattr(actuel, k) for k in EFFECTIFS})
+        db.commit()
+    eff = contenu.get("effectifs", {})
+    return stats.enregistrer_culte(db, eglise_id, h.date, eff.get("hommes"), eff.get("femmes"),
+                                   [tuple(l) for l in contenu.get("services", [])], eff.get("ados"), eff.get("enfants"))
+
+
+def jour_depuis_cellule(client: SheetsClient, onglet: str, ligne: int) -> Optional[date]:
+    """Le culte concerné par une cellule modifiée dans le Sheet (bloc A:D, ou ligne d'effectifs 3 à 7)."""
+    from .services import dimanches_du_mois
+
+    am = onglet_vers_date(onglet)
+    if not am:
+        return None
+    dimanches = dimanches_du_mois(*am)
+    for numero in range(1, len(dimanches) + 1):
+        bloc = client.lire_bloc(onglet, numero)
+        if bloc and bloc.ligne_debut <= ligne <= bloc.ligne_fin:
+            return dimanches[numero - 1]
+    if 3 <= ligne <= 2 + len(dimanches):
+        return dimanches[ligne - 3]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -497,6 +669,7 @@ class GoogleSheetsClient(SheetsClient):
         from google.oauth2 import service_account
 
         self._requests = requests
+        self._cache: dict = {}
         self._timeout = timeout
         self._sheet_id = sheet_id
         info = json.loads(cle_service_json)
@@ -512,11 +685,16 @@ class GoogleSheetsClient(SheetsClient):
         return {"Authorization": f"Bearer {self._creds.token}"}
 
     def _get(self, url: str, **params):
-        r = self._requests.get(url, headers=self._headers(), params=params, timeout=self._timeout)
-        r.raise_for_status()
-        return r.json()
+        # Petit cache de lecture, vidé à chaque écriture : évite de relire 10 fois le même onglet.
+        cle = (url, tuple(sorted(params.items())))
+        if cle not in self._cache:
+            r = self._requests.get(url, headers=self._headers(), params=params, timeout=self._timeout)
+            r.raise_for_status()
+            self._cache[cle] = r.json()
+        return self._cache[cle]
 
     def _post(self, url: str, body: dict):
+        self._cache.clear()
         r = self._requests.post(url, headers=self._headers(), json=body, timeout=self._timeout)
         r.raise_for_status()
         return r.json()
@@ -595,6 +773,7 @@ class GoogleSheetsClient(SheetsClient):
 
     def ajouter_nom(self, nom: str) -> None:
         # values.append évite de devoir connaître la dernière ligne occupée de la colonne.
+        self._cache.clear()
         r = self._requests.post(
             f"{SHEETS_API}/{self._sheet_id}/values/'Listes'!B1:B1000:append",
             headers=self._headers(), timeout=self._timeout,

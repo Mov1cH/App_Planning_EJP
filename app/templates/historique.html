@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Historique de synchro{% endblock %}
+{% block page_class %}paper{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="/stats">{{ icon('arrow-left') }} Stats</a>
+    <h1 class="page-title">Historique de synchro</h1>
+    <p class="page-sub">Avant chaque remplacement, sur le site comme dans le Google Sheet, l'ancienne version d'un culte est gardée ici. Rien n'est perdu : « Restaurer » remet une version dans le site (et dans le Sheet), la version actuelle étant elle-même gardée.</p>
+  </div>
+</div>
+
+{% if conflits %}
+<section class="stat-block" aria-labelledby="h-conflits">
+  <h2 id="h-conflits">À vérifier</h2>
+  <ul class="rows">
+    {% for sync, culte in conflits %}
+    <li><span class="date">{{ culte.date|date_fr('court') }}</span><div class="grow"><div class="meta">{{ sync.message }}</div></div>
+      <a class="btn btn-sm" href="/stats/sheet/recuperer">Comparer</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if not lignes %}
+<div class="empty"><h2>Aucune version remplacée pour l'instant</h2><p>Dès qu'un culte sera remplacé par une synchro, son ancienne version apparaîtra ici.</p></div>
+{% else %}
+<ul class="rows historique">
+  {% for l in lignes %}
+  {% set v = l.v %}
+  <li class="historique-item">
+    <span class="date">{{ v.date|date_fr('court') }}</span>
+    <div class="grow">
+      <div class="title">Version {{ 'du site' if v.source == 'site' else 'du Google Sheet' }} {{ v.raison }}</div>
+      <div class="meta">Mise de côté le {{ v.cree_le.strftime('%d/%m/%Y à %H:%M') }} (UTC) · {{ l.services|length }} service(s){% set e = l.effectifs %}{% if e %} · {{ e.hommes if e.hommes is not none else '–' }} H, {{ e.femmes if e.femmes is not none else '–' }} F, {{ e.ados if e.ados is not none else '–' }} Ados, {{ e.enfants if e.enfants is not none else '–' }} Enfants{% endif %}</div>
+      <details><summary>Voir le détail</summary>
+        <ul class="historique-detail">{% for d, p, s in l.services %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% endfor %}</ul>
+      </details>
+    </div>
+    <form action="/stats/historique/{{ v.id }}/restaurer" method="post" data-confirm="Le pointage actuel du {{ v.date|date_fr('jour') }} sera remplacé par cette version (il restera dans l'historique)." data-confirm-title="Restaurer cette version ?" data-confirm-ok="Restaurer">
+      <button class="btn btn-sm" type="submit">Restaurer</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

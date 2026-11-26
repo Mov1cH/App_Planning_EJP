@@ -291,7 +291,7 @@ def test_bloc_ecrit_par_le_site_non_reimporte(db):
     db.refresh(culte)
     client, numero = _client_import([], nb_lignes=3)
     assert ss.synchroniser_culte(db, client, culte).statut == "ok"  # le site écrit le bloc
-    assert ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30)) == []
+    assert _changements(ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))) == []
 
 
 def test_conflit_apercu_sans_ecriture_puis_confirmation(db):
@@ -321,7 +321,7 @@ def test_apres_import_l_export_ne_reecrit_pas_le_bloc(db):
     r = ss.synchroniser_culte(db, client, stats_culte(db, eglise.id))
     assert r.statut == "ok"
     assert client.ecritures_bloc == []  # déjà à jour, aucune écriture
-    assert ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30)) == []
+    assert _changements(ss.preparer_import(db, client, eglise.id, jusqu_a=date(2026, 11, 30))) == []
 
 
 def test_import_nom_avec_espace_final_rapproche(db):
@@ -354,3 +354,130 @@ def stats_culte(db, eglise_id):
     from app import stats
     db.expire_all()
     return stats.culte_du_jour(db, eglise_id, JOUR)
+
+
+def _changements(items):
+    return [i for i in items if i.action != "identique"]
+
+
+# ---------------------------------------------------------------------------
+# Miroir site ⇄ Sheet : dernière modification gagne, rien n'est jamais perdu
+# ---------------------------------------------------------------------------
+def _historique(db, eglise_id):
+    import json
+    db.expire_all()
+    return [(h.source, json.loads(h.contenu)) for h in
+            db.query(models.CulteHistorique).filter(models.CulteHistorique.eglise_id == eglise_id)
+            .order_by(models.CulteHistorique.id)]
+
+
+def _site_puis_sheet(db):
+    """Le site pointe le culte puis l'écrit dans le Sheet : les deux sont synchronisés."""
+    from app import stats
+    eglise = _eglise(db)
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Anne"), ("Sono", "Franck", "Franck")])
+    client, numero = _client_import([], nb_lignes=4)
+    assert ss.synchroniser_culte(db, client, culte).statut == "ok"
+    return eglise, client, numero
+
+
+def test_modif_du_sheet_appliquee_automatiquement_et_ancienne_version_gardee(db):
+    eglise, client, numero = _site_puis_sheet(db)
+    bloc = client.onglets[ONGLET]["blocs"][numero]
+    bloc.valeurs[1] = ("Sono", "Franck", "Gael")  # corrigé dans le Sheet
+    r = ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    assert r.importes == [JOUR] and r.conflits == []
+    assert [s.servi for s in stats_culte(db, eglise.id).services] == ["Anne", "Gael"]
+    h = _historique(db, eglise.id)
+    assert h[-1][0] == "site" and ["Sono", "Franck", "Franck"] in h[-1][1]["services"]
+
+
+def test_modif_du_site_apres_synchro_remplace_le_sheet_et_garde_sa_version(db):
+    from app import stats
+    eglise, client, numero = _site_puis_sheet(db)
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Armel"), ("Sono", "Franck", "Franck")])
+    assert ss.synchroniser_culte(db, client, culte).statut == "ok"
+    assert client.onglets[ONGLET]["blocs"][numero].valeurs[0] == ("Accueil", "Anne", "Armel")
+    h = _historique(db, eglise.id)
+    assert h[-1][0] == "sheet" and ["Accueil", "Anne", "Anne"] in h[-1][1]["services"]
+
+
+def test_conflit_rien_n_est_ecrase_d_aucun_cote(db):
+    from app import stats
+    import time
+    eglise, client, numero = _site_puis_sheet(db)
+    bloc = client.onglets[ONGLET]["blocs"][numero]
+    bloc.valeurs[0] = ("Accueil", "Anne", "Colombe")  # modifié dans le Sheet…
+    time.sleep(1.1)
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Liza"), ("Sono", "Franck", "Franck")])  # … et sur le site
+    r = ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    assert r.conflits == [JOUR] and r.importes == []
+    assert stats_culte(db, eglise.id).services[0].servi == "Liza"  # site intact
+    assert ss.synchroniser_culte(db, client, culte).statut == "deja_rempli"
+    assert client.onglets[ONGLET]["blocs"][numero].valeurs[0] == ("Accueil", "Anne", "Colombe")  # Sheet intact
+
+
+def test_bloc_vide_dans_le_sheet_n_efface_pas_le_site(db):
+    eglise, client, numero = _site_puis_sheet(db)
+    bloc = client.onglets[ONGLET]["blocs"][numero]
+    bloc.valeurs = [("", "", "")] * bloc.nb_lignes
+    ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    assert len(stats_culte(db, eglise.id).services) == 2
+
+
+def test_case_d_effectif_videe_dans_le_sheet_n_efface_pas_le_site(db):
+    eglise, client, numero = _site_puis_sheet(db)
+    client.onglets[ONGLET]["effectifs"][numero].hommes = None
+    ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    assert stats_culte(db, eglise.id).hommes == 10
+
+
+def test_effectif_modifie_sur_le_site_remplace_celui_du_sheet(db):
+    from app import stats
+    eglise, client, numero = _site_puis_sheet(db)
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 11, 12, [("Accueil", "Anne", "Anne"), ("Sono", "Franck", "Franck")])
+    ss.synchroniser_culte(db, client, culte)
+    assert client.onglets[ONGLET]["effectifs"][numero].hommes == 11
+
+
+def test_restaurer_une_version(db):
+    eglise, client, numero = _site_puis_sheet(db)
+    client.onglets[ONGLET]["blocs"][numero].valeurs[1] = ("Sono", "Franck", "Gael")
+    ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    h = db.query(models.CulteHistorique).filter(models.CulteHistorique.source == "site").first()
+    culte = ss.restaurer_version(db, eglise.id, h.id)
+    assert [s.servi for s in culte.services] == ["Anne", "Franck"]
+    # La version remplacée par la restauration est elle-même gardée.
+    assert any(["Sono", "Franck", "Gael"] in c["services"] for _, c in _historique(db, eglise.id))
+
+
+def test_septembre_jamais_synchronise(db):
+    from app import stats
+    eglise = _eglise(db)
+    culte = stats.enregistrer_culte(db, eglise.id, date(2026, 9, 13), 14, 19, [("Accueil", "Anne", "Anne")])
+    client, _ = _client_import([])
+    assert ss.synchroniser_culte(db, client, culte).statut == "deja_rempli"
+    assert client.ecritures_bloc == []
+    assert ss.importer_auto(db, client, eglise.id, jours=[date(2026, 9, 13)]).importes == []
+
+
+def test_jour_depuis_cellule(db):
+    client, numero = _client_import([("Accueil", "Anne", "Anne")])  # bloc lignes 53-56, culte 4
+    assert ss.jour_depuis_cellule(client, ONGLET, 54) == JOUR
+    assert ss.jour_depuis_cellule(client, ONGLET, 6) == JOUR  # ligne d'effectifs du culte 4
+    assert ss.jour_depuis_cellule(client, "Data_Calc", 54) is None
+
+
+def test_webhook_refuse_sans_secret(monkeypatch):
+    import os
+    os.environ.setdefault("SECRET_KEY", "test")
+    from fastapi.testclient import TestClient
+    import main
+    monkeypatch.setenv("SHEET_WEBHOOK_SECRET", "bon-secret")
+    c = TestClient(main.app)
+    assert c.post("/api/sheet/modification", json={"onglet": ONGLET, "ligne": 54}).status_code == 401
+    assert c.post("/api/sheet/modification", json={"onglet": ONGLET, "ligne": 54},
+                  headers={"X-Sheet-Secret": "mauvais"}).status_code == 401
+    monkeypatch.delenv("SHEET_WEBHOOK_SECRET")
+    assert c.post("/api/sheet/modification", json={"onglet": ONGLET, "ligne": 54},
+                  headers={"X-Sheet-Secret": ""}).status_code == 401

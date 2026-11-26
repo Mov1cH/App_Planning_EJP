@@ -6,7 +6,7 @@
   <div>
     <a class="back" href="/stats">{{ icon('arrow-left') }} Stats</a>
     <h1 class="page-title">Récupérer depuis le Google Sheet</h1>
-    <p class="page-sub">Ces cultes ont été saisis ou modifiés à la main dans le Sheet. Le Sheet fait foi : cochez ceux à reprendre dans le site, puis confirmez. Rien n'est modifié avant votre confirmation.</p>
+    <p class="page-sub">Ces cultes ont été saisis ou modifiés dans le Sheet. Cochez ceux à reprendre dans le site, puis confirmez. Rien n'est modifié avant votre confirmation, et toute version remplacée reste dans l'historique.</p>
   </div>
 </div>
 
@@ -22,7 +22,7 @@
     {% for it in items %}
     <li class="sheet-import-item">
       <label class="sheet-import-check">
-        <input type="checkbox" name="cle" value="{{ it.cle }}" checked>
+        <input type="checkbox" name="cle" value="{{ it.cle }}"{% if not it.conflit %} checked{% endif %}>
         <span class="date">{{ it.jour|date_fr('jour') }}</span>
       </label>
       <div class="grow">
@@ -30,6 +30,7 @@
           {% if it.action == 'creer' %}Nouveau pointage, créé depuis le Sheet{% else %}Le pointage du site sera remplacé par celui du Sheet{% endif %}
         </div>
         <div class="meta">{{ it.onglet }} · culte {{ it.numero }}</div>
+        {% if it.conflit %}<p class="sheet-import-conflit">Modifié à la fois sur le site et dans le Sheet depuis la dernière synchro. Cochez pour garder la version du Sheet ; sinon, la version du site sera renvoyée vers le Sheet. Dans les deux cas, la version écartée reste dans l'<a href="/stats/historique">historique</a>.</p>{% endif %}
         <div class="sheet-import-cols">
           {% if it.action == 'remplacer' %}
           <div>

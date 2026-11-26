@@ -113,8 +113,31 @@ class SheetSync(Base):
     culte_id = Column(Integer, ForeignKey("cultes.id"), unique=True, index=True)
     empreinte = Column(String)
     ecrit_le = Column(DateTime)
-    statut = Column(String)  # "ok" | "deja_rempli" | "erreur"
+    statut = Column(String)  # "ok" | "importe" | "deja_rempli" | "conflit" | "erreur"
     message = Column(String, nullable=True)
+    effectifs = Column(Text, nullable=True)  # JSON : effectifs tels que synchronisés la dernière fois
+
+
+class CulteHistorique(Base):
+    """Version d'un culte mise de côté avant chaque écrasement (côté site ou côté Sheet) : rien ne se perd."""
+    __tablename__ = "cultes_historique"
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), index=True)
+    date = Column(Date, index=True)  # date du culte
+    source = Column(String)  # "site" (version du site remplacée) ou "sheet" (version du Sheet remplacée)
+    raison = Column(String)  # ex. « remplacée par une modification du Sheet »
+    contenu = Column(Text)  # JSON : {"services": [[dep, prevu, servi], ...], "effectifs": {...}}
+    cree_le = Column(DateTime)
+
+
+class SyncEtat(Base):
+    """Dernière récupération automatique Sheet -> site, par église (filet de sécurité du webhook)."""
+    __tablename__ = "sync_etat"
+
+    id = Column(Integer, primary_key=True, index=True)
+    eglise_id = Column(Integer, ForeignKey("eglises.id"), unique=True, index=True)
+    dernier_import = Column(DateTime, nullable=True)
 
 
 class DerouleLive(Base):
