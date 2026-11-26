@@ -727,41 +727,50 @@ class GoogleSheetsClient(SheetsClient):
     def onglet_existe(self, onglet: str) -> bool:
         return self._feuille(onglet) is not None
 
+    def _fusions_a(self, feuille: dict) -> List[Tuple[int, int]]:
+        """Cases fusionnées de la colonne A (numéro des dimanches), en lignes 1-indexées (début, fin incluse)."""
+        sheet_id = feuille["properties"]["sheetId"]
+        return sorted((m["startRowIndex"] + 1, m["endRowIndex"]) for m in feuille.get("merges", [])
+                      if m["sheetId"] == sheet_id and m["startColumnIndex"] == 0 and m["endColumnIndex"] == 1
+                      and m["startRowIndex"] >= 1)
+
     def lire_bloc(self, onglet: str, numero_culte: int) -> Optional[BlocCulte]:
         feuille = self._feuille(onglet)
         if not feuille:
             return None
-        sheet_id = feuille["properties"]["sheetId"]
         valeurs_a = self._get(f"{SHEETS_API}/{self._sheet_id}/values/'{onglet}'!A1:D500").get("values", [])
-        for m in feuille.get("merges", []):
-            if m["sheetId"] != sheet_id or m["startColumnIndex"] != 0 or m["endColumnIndex"] != 1:
+        fusions = self._fusions_a(feuille)
+        for i, (debut, fin_fusion) in enumerate(fusions):
+            contenu = valeurs_a[debut - 1][0] if debut - 1 < len(valeurs_a) and valeurs_a[debut - 1] else ""
+            if numero_de_cellule(contenu) != numero_culte:
                 continue
-            ligne0 = m["startRowIndex"]
-            contenu = valeurs_a[ligne0][0] if ligne0 < len(valeurs_a) and valeurs_a[ligne0] else ""
-            if numero_de_cellule(contenu) == numero_culte:
-                debut, fin = m["startRowIndex"] + 1, m["endRowIndex"]  # 1-indexé, fin inclusif
-                lignes = []
-                for i in range(debut - 1, fin):
-                    row = valeurs_a[i] if i < len(valeurs_a) else []
-                    lignes.append((
-                        row[1] if len(row) > 1 else "", row[2] if len(row) > 2 else "", row[3] if len(row) > 3 else ""
-                    ))
-                return BlocCulte(ligne_debut=debut, ligne_fin=fin, valeurs=lignes)
+            # Le bloc va jusqu'au dimanche suivant : une ligne ajoutée juste sous la case fusionnée (sans l'agrandir)
+            # appartient quand même à ce dimanche.
+            fin = fusions[i + 1][0] - 1 if i + 1 < len(fusions) else fin_fusion
+            lignes = []
+            for r in range(debut - 1, fin):
+                row = valeurs_a[r] if r < len(valeurs_a) else []
+                lignes.append((row[1] if len(row) > 1 else "", row[2] if len(row) > 2 else "", row[3] if len(row) > 3 else ""))
+            return BlocCulte(ligne_debut=debut, ligne_fin=fin, valeurs=lignes)
         return None
 
     def ecrire_bloc(self, onglet: str, bloc: BlocCulte, lignes: List[Tuple[str, str, str]]) -> None:
+        feuille = self._feuille(onglet)
+        sheet_id = feuille["properties"]["sheetId"]
+        requetes = []
         if len(lignes) > bloc.nb_lignes:
-            feuille = self._feuille(onglet)
-            sheet_id = feuille["properties"]["sheetId"]
             manquantes = len(lignes) - bloc.nb_lignes
-            self._post(f"{SHEETS_API}/{self._sheet_id}:batchUpdate", {"requests": [{
-                "insertDimension": {
-                    "range": {"sheetId": sheet_id, "dimension": "ROWS",
-                              "startIndex": bloc.ligne_fin, "endIndex": bloc.ligne_fin + manquantes},
-                    "inheritFromBefore": True,
-                }
-            }]})
+            requetes.append({"insertDimension": {
+                "range": {"sheetId": sheet_id, "dimension": "ROWS",
+                          "startIndex": bloc.ligne_fin - 1, "endIndex": bloc.ligne_fin - 1 + manquantes},
+                "inheritFromBefore": True,  # insérées AVANT la dernière ligne : à l'intérieur du bloc
+            }})
             bloc.ligne_fin += manquantes
+        # La case du numéro couvre toujours tout le bloc (aucune ligne « hors dimanche »).
+        zone_a = {"sheetId": sheet_id, "startRowIndex": bloc.ligne_debut - 1, "endRowIndex": bloc.ligne_fin,
+                  "startColumnIndex": 0, "endColumnIndex": 1}
+        requetes += [{"unmergeCells": {"range": zone_a}}, {"mergeCells": {"range": zone_a, "mergeType": "MERGE_ALL"}}]
+        self._post(f"{SHEETS_API}/{self._sheet_id}:batchUpdate", {"requests": requetes})
         valeurs = [[dep, prevu, servi] for dep, prevu, servi in lignes]
         self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchUpdate", {
             "valueInputOption": "USER_ENTERED",

@@ -490,3 +490,43 @@ def test_numero_et_date_en_colonne_a():
     assert ss.libelle_culte(2026, 11, 4) == "4 · 22/11"
     assert ss.libelle_culte(2026, 11, 5) == "5 · 29/11"
     assert ss.libelle_culte(2027, 2, 5) == "5"  # février 2027 n'a que 4 dimanches
+
+
+class _ClientGoogleSimule(ss.GoogleSheetsClient):
+    """Le vrai client, sans réseau : métadonnées et valeurs fournies par le test."""
+    def __init__(self, fusions, valeurs):
+        self._feuilles = {"sheets": [{"properties": {"title": ONGLET, "sheetId": 7, "index": 0},
+                                      "merges": [{"sheetId": 7, "startRowIndex": a - 1, "endRowIndex": b,
+                                                  "startColumnIndex": 0, "endColumnIndex": 1} for a, b in fusions]}]}
+        self._valeurs = valeurs
+        self._sheet_id = "test"
+        self.posts = []
+
+    def _metadonnees(self):
+        return self._feuilles
+
+    def _get(self, url, **params):
+        return {"values": self._valeurs}
+
+    def _post(self, url, body):
+        self.posts.append(body)
+        return {}
+
+
+def test_ligne_sous_la_case_fusionnee_compte_pour_ce_dimanche():
+    # Comme octobre avant correction : la case « 1 » couvre 2-17 mais la Coordination est en ligne 18.
+    valeurs = [["Date"], ["1 · 04/10", "Prodige Musique", "Evodie", "Evodie"]] + [["", "Sono", "X", "X"]] * 15 \
+        + [["", "Coordination", "Morel", "Morel"], ["2 · 11/10", "Prodige Musique", "Liza", "Liza"]]
+    c = _ClientGoogleSimule([(2, 17), (19, 37)], valeurs)
+    b1, b2 = c.lire_bloc(ONGLET, 1), c.lire_bloc(ONGLET, 2)
+    assert (b1.ligne_debut, b1.ligne_fin) == (2, 18) and b1.valeurs[-1] == ("Coordination", "Morel", "Morel")
+    assert b2.ligne_debut == 19
+
+
+def test_ecriture_agrandit_la_case_du_dimanche():
+    c = _ClientGoogleSimule([(53, 67)], [])
+    bloc = ss.BlocCulte(ligne_debut=53, ligne_fin=55, valeurs=[("", "", "")] * 3)
+    c.ecrire_bloc(ONGLET, bloc, [("A", "x", "x")] * 5)
+    req = c.posts[0]["requests"]
+    assert req[0]["insertDimension"]["range"]["startIndex"] == 54  # insérées à l'intérieur du bloc
+    assert req[-1]["mergeCells"]["range"]["endRowIndex"] == 57  # la case couvre les 5 lignes
