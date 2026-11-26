@@ -48,6 +48,22 @@ def numero_culte_dans_mois(jour: date) -> int:
     return dimanches_du_mois(jour.year, jour.month).index(jour) + 1
 
 
+def numero_de_cellule(contenu) -> Optional[int]:
+    """Numéro du culte en colonne A : « 4 », 4 ou « 4 · 22/11 » -> 4."""
+    m = re.match(r"\s*(\d+)", str(contenu or ""))
+    return int(m.group(1)) if m else None
+
+
+def libelle_culte(annee: int, mois: int, numero: int) -> str:
+    """Ce qu'on écrit en colonne A : « 4 · 22/11 » (rang du dimanche dans le mois et sa date)."""
+    from .services import dimanches_du_mois
+    dimanches = dimanches_du_mois(annee, mois)
+    if numero <= len(dimanches):
+        d = dimanches[numero - 1]
+        return f"{numero} · {d.day:02d}/{d.month:02d}"
+    return str(numero)
+
+
 def onglet_vers_date(onglet: str) -> Optional[Tuple[int, int]]:
     """« Décembre 2026 » -> (2026, 12), sinon None (onglet qui n'est pas un mois, ex. Data_Calc)."""
     try:
@@ -722,7 +738,7 @@ class GoogleSheetsClient(SheetsClient):
                 continue
             ligne0 = m["startRowIndex"]
             contenu = valeurs_a[ligne0][0] if ligne0 < len(valeurs_a) and valeurs_a[ligne0] else ""
-            if str(contenu).strip() == str(numero_culte):
+            if numero_de_cellule(contenu) == numero_culte:
                 debut, fin = m["startRowIndex"] + 1, m["endRowIndex"]  # 1-indexé, fin inclusif
                 lignes = []
                 for i in range(debut - 1, fin):
@@ -809,9 +825,11 @@ class GoogleSheetsClient(SheetsClient):
             if m["sheetId"] == nouveau_sheet_id and m["startColumnIndex"] == 0 and m["endColumnIndex"] == 1
         )
         if lignes_a:
+            annee, mois = onglet_vers_date(nouveau)
             self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchUpdate", {
-                "valueInputOption": "USER_ENTERED",
-                "data": [{"range": f"'{nouveau}'!A{ligne}", "values": [[i + 1]]} for i, ligne in enumerate(lignes_a)],
+                "valueInputOption": "RAW",
+                "data": [{"range": f"'{nouveau}'!A{ligne}", "values": [[libelle_culte(annee, mois, i + 1)]]}
+                         for i, ligne in enumerate(lignes_a)],
             })
 
     def maj_calculs(self, nouveau: str, depuis: str) -> None:

@@ -481,3 +481,12 @@ def test_webhook_refuse_sans_secret(monkeypatch):
     monkeypatch.delenv("SHEET_WEBHOOK_SECRET")
     assert c.post("/api/sheet/modification", json={"onglet": ONGLET, "ligne": 54},
                   headers={"X-Sheet-Secret": ""}).status_code == 401
+
+
+def test_numero_et_date_en_colonne_a():
+    assert ss.numero_de_cellule("4 · 22/11") == 4
+    assert ss.numero_de_cellule(4) == 4 and ss.numero_de_cellule("4") == 4
+    assert ss.numero_de_cellule("") is None
+    assert ss.libelle_culte(2026, 11, 4) == "4 · 22/11"
+    assert ss.libelle_culte(2026, 11, 5) == "5 · 29/11"
+    assert ss.libelle_culte(2027, 2, 5) == "5"  # février 2027 n'a que 4 dimanches
