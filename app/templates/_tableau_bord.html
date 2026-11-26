@@ -1,0 +1,83 @@
+{# Tableau de bord sur le modèle du « Tableau de Bord Annuel » du Google Sheet. #}
+{% macro tuiles(c, dernier_libelle, dernier_valeur, effectif_total) %}
+<div class="tb-kpis">
+  <div class="tb-kpi"><span>Services prévus</span><b>{{ c.prevus }}</b></div>
+  <div class="tb-kpi"><span>Services assurés</span><b>{{ c.presents }}</b></div>
+  <div class="tb-kpi{{ ' is-alert' if c.absences }}"><span>Absences</span><b>{{ c.absences }}</b></div>
+  <div class="tb-kpi"><span>Taux de présence</span><b>{{ (c.taux ~ ' %') if c.taux is not none else '–' }}</b></div>
+  <div class="tb-kpi"><span>Effectif total</span><b>{{ effectif_total }}</b></div>
+  <div class="tb-kpi"><span>{{ dernier_libelle }}</span><b>{{ dernier_valeur if dernier_valeur is not none else '–' }}</b></div>
+</div>
+{% endmacro %}
+
+{% macro barres(items, couleur, vide, limite=none) %}
+{% set liste = items[:limite] if limite else items %}
+{% if liste %}
+{% set vmax = (liste|map(attribute=1)|max) or 1 %}
+<ul class="tb-bars" style="--tb-c: {{ couleur }}">
+  {% for nom, n in liste %}
+  <li><span class="tb-name" title="{{ nom }}">{{ nom }}</span><span class="tb-track"><i style="width: {{ (100 * n / vmax)|round(1) }}%"></i></span><b>{{ n }}</b></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted tb-vide">{{ vide }}</p>
+{% endif %}
+{% endmacro %}
+
+{% macro tableau_bord(b, p, MOIS_FR) %}
+{% set t = b.total %}
+<section class="tb" aria-labelledby="tb-titre">
+  <h2 class="tb-titre" id="tb-titre">{% if p.type == 'mois' %}Tableau de bord{% else %}Tableau de bord {{ {'annee': 'annuel', 'semestre': 'du semestre', 'trimestre': 'du trimestre'}[p.type] }} {{ p.annee }}{% endif %}</h2>
+
+  {% if p.type != 'mois' %}
+  <div class="tb-bande">Bilan {{ {'annee': 'annuel', 'semestre': 'du semestre', 'trimestre': 'du trimestre'}[p.type] }}</div>
+  {{ tuiles(t, 'STAR actives', b.stars_actives, b.effectif_total) }}
+
+  <div class="tb-grille">
+    <figure class="tb-carte">
+      <figcaption><b>Top 10 des STAR</b><span>Les 10 personnes qui ont servi le plus souvent sur la période.</span></figcaption>
+      {{ barres(b.effectues, 'var(--tb-sapin)', 'Aucun service sur la période.', 10) }}
+    </figure>
+    <figure class="tb-carte">
+      <figcaption><b>Top 10 des absences</b><span>Personnes prévues le plus souvent absentes ou remplacées sur la période.</span></figcaption>
+      {{ barres(b.manques, 'var(--tb-terre)', 'Aucune absence sur la période.', 10) }}
+    </figure>
+  </div>
+
+  {% set vmax = (b.par_mois|map(attribute='compteurs.prevus')|max) or 1 %}
+  {% set vmax2 = (b.par_mois|map(attribute='compteurs.services')|max) or 1 %}
+  {% set haut = [vmax, vmax2]|max %}
+  <figure class="tb-carte">
+    <figcaption><b>Services prévus et effectués par mois</b><span>Clair : services planifiés. Foncé : services réellement assurés. Un mois vide n'est pas encore rempli.</span></figcaption>
+    <div class="tb-cols" role="img" aria-label="{% for lm in b.par_mois %}{{ MOIS_FR[lm.mois] }} : {{ lm.compteurs.prevus }} prévus, {{ lm.compteurs.services }} effectués{{ '. ' if not loop.last }}{% endfor %}">
+      {% for lm in b.par_mois %}
+      <a class="tb-col" href="/stats?type=mois&annee={{ lm.annee }}&n={{ lm.mois }}">
+        <span class="tb-col-barres">
+          <i class="is-prevu" style="height: {{ (100 * lm.compteurs.prevus / haut)|round(1) }}%"><em>{{ lm.compteurs.prevus or '' }}</em></i>
+          <i class="is-fait" style="height: {{ (100 * lm.compteurs.services / haut)|round(1) }}%"><em>{{ lm.compteurs.services or '' }}</em></i>
+        </span>
+        <span class="tb-col-nom">{{ ['', 'Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'][lm.mois] }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </figure>
+  {% endif %}
+
+  {% for lm in b.par_mois if lm.cultes or p.type == 'mois' %}
+  <section class="tb-mois" aria-labelledby="tb-m-{{ lm.annee }}-{{ lm.mois }}">
+    <div class="tb-bande" id="tb-m-{{ lm.annee }}-{{ lm.mois }}">{% if p.type != 'mois' %}<a href="/stats?type=mois&annee={{ lm.annee }}&n={{ lm.mois }}">{{ MOIS_FR[lm.mois]|upper }} {{ lm.annee }}</a>{% else %}{{ MOIS_FR[lm.mois]|upper }} {{ lm.annee }}{% endif %}</div>
+    {{ tuiles(lm.compteurs, 'Moyenne par culte', lm.effectif_moyen, lm.effectif_total) }}
+    <div class="tb-grille">
+      <figure class="tb-carte">
+        <figcaption><b>{{ MOIS_FR[lm.mois] }} : services effectués</b><span>Nombre de fois où chaque STAR a servi ce mois-ci.</span></figcaption>
+        {{ barres(lm.effectues, 'var(--tb-vert)', 'Aucun service pointé ce mois-ci.') }}
+      </figure>
+      <figure class="tb-carte">
+        <figcaption><b>{{ MOIS_FR[lm.mois] }} : services manqués</b><span>Nombre de fois où chaque personne prévue n'a pas servi.</span></figcaption>
+        {{ barres(lm.manques, 'var(--tb-terre)', 'Aucune absence ce mois-ci.') }}
+      </figure>
+    </div>
+  </section>
+  {% endfor %}
+</section>
+{% endmacro %}

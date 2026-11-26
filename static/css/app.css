@@ -811,3 +811,47 @@ a.bar-name:hover { color: var(--acc); }
 .sheet-import-cols ul { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .sheet-import-actions { margin: 20px 0 8px; display: flex; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 600px) { .sheet-import-item { flex-direction: column; gap: 8px; } }
+
+/* ---------- Tableau de bord (même rendu que le « Tableau de Bord Annuel » du Google Sheet) ---------- */
+.tb { --tb-sapin: #2E5D50; --tb-sapin-ink: #23473D; --tb-clair: #A9C7B8; --tb-vert: #5B8B76; --tb-terre: #AF7C61;
+      --tb-fond: #F6F9F7; --tb-label: #E6EEE9;
+      background: var(--tb-fond); border-radius: 28px; padding: clamp(18px, 3vw, 32px); margin-bottom: 16px; }
+.tb-titre { color: var(--tb-sapin); font-size: clamp(24px, 3.4vw, 34px); text-transform: uppercase; letter-spacing: -.02em; margin-bottom: 20px; }
+.tb-bande { background: var(--tb-sapin); color: #fff; font-weight: 700; font-size: 14px; letter-spacing: .02em; text-transform: uppercase;
+            padding: 10px 16px; border-radius: 12px; margin: 8px 0 12px; }
+.tb-bande a { color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.tb-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tb-kpi { background: #fff; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.tb-kpi span { background: var(--tb-label); color: var(--tb-sapin); font-weight: 700; font-size: 13px; padding: 8px 12px; }
+.tb-kpi b { color: var(--tb-sapin-ink); font-family: var(--display); font-weight: 800; font-size: clamp(24px, 3vw, 32px);
+            letter-spacing: -.03em; padding: 12px 12px 14px; white-space: nowrap; }
+.tb-kpi.is-alert b { color: var(--tb-terre); }
+.tb-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.tb-carte { background: #fff; border-radius: 20px; padding: 18px 20px 20px; margin: 0 0 12px; min-width: 0; }
+.tb-grille .tb-carte { margin-bottom: 0; }
+.tb-carte figcaption { margin-bottom: 14px; }
+.tb-carte figcaption b { display: block; font-family: var(--display); font-weight: 800; font-size: 18px; letter-spacing: -.02em; color: var(--text); }
+.tb-carte figcaption span { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.tb-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tb-bars li { display: grid; grid-template-columns: minmax(90px, 32%) minmax(0, 1fr) 3ch; align-items: center; gap: 10px; }
+.tb-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-track { height: 14px; border-radius: 4px; background: var(--tb-label); overflow: hidden; }
+.tb-track i { display: block; height: 100%; min-width: 3px; background: var(--tb-c); border-radius: 4px; }
+.tb-bars b { font-family: var(--display); font-weight: 800; font-size: 16px; text-align: right; }
+.tb-vide { font-size: 14px; }
+.tb-cols { display: flex; align-items: stretch; gap: 8px; height: 230px; overflow-x: auto; padding-top: 18px; }
+.tb-col { flex: 1 0 44px; display: flex; flex-direction: column; gap: 6px; min-width: 44px; }
+.tb-col-barres { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-bottom: 1px solid var(--line); }
+.tb-col-barres i { position: relative; width: min(22px, 40%); border-radius: 4px 4px 0 0; }
+.tb-col-barres i.is-prevu { background: var(--tb-clair); }
+.tb-col-barres i.is-fait { background: var(--tb-sapin); }
+.tb-col-barres em { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+.tb-col-nom { text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.tb-col:hover .tb-col-nom { color: var(--tb-sapin); }
+.tb-mois { margin-top: 8px; }
+@media (max-width: 900px) { .tb-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .tb-grille { grid-template-columns: minmax(0, 1fr); }
+  .tb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tb-kpi b { font-size: 26px; }
+}

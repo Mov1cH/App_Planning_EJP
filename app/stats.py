@@ -228,6 +228,9 @@ class LigneMois:
     cultes: int
     compteurs: Compteurs
     effectif_moyen: Optional[int]
+    effectif_total: int = 0
+    effectues: List[Tuple[str, int]] = field(default_factory=list)
+    manques: List[Tuple[str, int]] = field(default_factory=list)
 
 
 @dataclass
@@ -246,6 +249,16 @@ class Bilan:
     @property
     def vide(self) -> bool:
         return not self.cultes
+
+    @property
+    def effectif_total(self) -> int:
+        """Somme des effectifs (H + F + Ados + Enfants) de tous les cultes : « Effectif total » du Sheet."""
+        return sum(c.effectif or 0 for c in self.cultes)
+
+    @property
+    def stars_actives(self) -> int:
+        """Nombre de personnes différentes qui ont servi au moins une fois : « STAR actives » du Sheet."""
+        return len(self.effectues)
 
     @property
     def effectif_moyen(self) -> Optional[int]:
@@ -301,6 +314,8 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
     graphies_dep: Dict[str, Counter] = defaultdict(Counter)
     absences_detail = []
     par_mois_c: Dict[Tuple[int, int], List[LigneCulte]] = defaultdict(list)
+    eff_mois: Dict[Tuple[int, int], Counter] = defaultdict(Counter)
+    manq_mois: Dict[Tuple[int, int], Counter] = defaultdict(Counter)
 
     for c in cultes:
         cpt = Compteurs()
@@ -310,11 +325,12 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         lignes.append(lc)
         par_mois_c[(c.date.year, c.date.month)].append(lc)
         for s in c.services:
+            mois_c = (c.date.year, c.date.month)
             if s.servi:
                 k = cle_nom(s.departement); graphies_dep[k][s.departement] += 1; par_dep[k] += 1
-                k = cle_nom(s.servi); graphies[k][s.servi] += 1; effectues[k] += 1
+                k = cle_nom(s.servi); graphies[k][s.servi] += 1; effectues[k] += 1; eff_mois[mois_c][k] += 1
             if s.prevu and cle_nom(s.servi) != cle_nom(s.prevu):
-                k = cle_nom(s.prevu); graphies[k][s.prevu] += 1; manques[k] += 1
+                k = cle_nom(s.prevu); graphies[k][s.prevu] += 1; manques[k] += 1; manq_mois[mois_c][k] += 1
                 absences_detail.append((c.date, s.departement, s.prevu, s.servi))
 
     par_mois = []
@@ -324,8 +340,8 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         for x in lm:
             cpt.prevus += x.compteurs.prevus; cpt.presents += x.compteurs.presents
             cpt.absences += x.compteurs.absences; cpt.services += x.compteurs.services
-        eff = [x.effectif for x in lm if x.effectif is not None]
-        par_mois.append(LigneMois(a, m, len(lm), cpt, round(sum(eff) / len(eff)) if eff else None))
+        eff = [x.effectif for x in lm if x.effectif]  # comme le Sheet : moyenne des cultes dont l'effectif est > 0
+        par_mois.append(LigneMois(a, m, len(lm), cpt, round(sum(eff) / len(eff)) if eff else None, sum(eff)))
 
     liste = stars(db, eglise_id)
     cles_stars = {cle_nom(x.nom): x.nom for x in liste}
@@ -335,6 +351,9 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
             graphies[k] = Counter({nom: 10 ** 6})
     sans_service = [nom for k, nom in cles_stars.items() if not effectues.get(k)] if liste else []
     hors_liste = [graphies[k].most_common(1)[0][0] for k in effectues if k not in cles_stars] if liste else []
+    for lm in par_mois:
+        lm.effectues = _classement(eff_mois[(lm.annee, lm.mois)], graphies)
+        lm.manques = _classement(manq_mois[(lm.annee, lm.mois)], graphies)
     return Bilan(p, lignes, total, _classement(par_dep, graphies_dep), _classement(effectues, graphies),
                  _classement(manques, graphies), par_mois, absences_detail,
                  sans_service, sorted(hors_liste, key=cle_nom))
