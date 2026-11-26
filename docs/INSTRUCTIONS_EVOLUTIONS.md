@@ -174,3 +174,50 @@ Créer l'onglet en **dupliquant** `Décembre 2026` (ou le dernier mois existant)
 1. Tests `pytest` verts, test manuel en local (iPhone sur le même Wi-Fi : `--host 0.0.0.0`).
 2. Résumé à Morel : ce qui a changé, ce qu'il doit faire (compte de service Google, variables Vercel).
 3. **Déploiement seulement après son accord** : `vercel --prod`, puis vérifier `/healthz`, la page jour J et un pointage test (à supprimer ensuite).
+
+---
+
+## 5. Page Stats du site : même rendu que le « Tableau de Bord Annuel » du Sheet de test
+
+Morel aime le rendu du Sheet de TEST (ID `1AoMpGp4GWjyDmcfRr32GWnbw7TsUky4J9sIdJB_rBzw`, onglet « Tableau de Bord Annuel » + onglets mensuels). **Lire ce Sheet via l'API (compte de service déjà partagé) avant de coder**, et reproduire sa structure sur la page `/stats` (vue « Année » en priorité, puis la vue « Mois »), en gardant le style du site (CSS maison, polices et couleurs du thème).
+
+Structure à reproduire, de haut en bas :
+1. **Titre** « Tableau de bord annuel 2026 ».
+2. **Bilan annuel** : une rangée de 6 chiffres clés : Services prévus · Services assurés · Absences · Taux de présence · Effectif total · STAR actives.
+3. **Top 10 des STAR** : barres horizontales, couleur vert sapin `#2E5D50`, sous-titre « Les 10 personnes qui ont servi le plus souvent depuis juillet. »
+4. **Top 10 des absences** : barres horizontales, couleur terre cuite `#AF7C61`, sous-titre « Personnes prévues le plus souvent absentes ou remplacées depuis juillet. »
+5. **Services prévus et effectués par mois** : colonnes groupées, clair `#A9C7B8` = prévus, foncé `#2E5D50` = assurés, sous-titre « Clair : services planifiés. Foncé : services réellement assurés. Un mois vide n'est pas encore rempli. »
+6. **Une section par mois** (Septembre, Octobre, Novembre, Décembre…), titre en capitales « NOVEMBRE 2026 » :
+   - 6 chiffres clés : Services prévus · Services assurés · Absences · Taux de présence · Effectif total · Moyenne par culte ;
+   - deux graphiques côte à côte : « <Mois> : services effectués » (colonnes `#5B8B76`, « Nombre de fois où chaque STAR a servi ce mois-ci. ») et « <Mois> : services manqués » ;
+   - (vue Mois) « Services par département » et le tableau des effectifs par culte (Hommes, Femmes, Ados, Enfants, Total).
+- Graphiques en **SVG ou HTML dessinés côté serveur** (comme le radar existant dans `app/stats.py`), pas de librairie lourde ; lisibles sur iPhone (les barres horizontales s'empilent sous 600 px, étiquettes jamais tronquées de façon illisible).
+- Les chiffres viennent de `stats.bilan()` (à compléter si besoin) : le site et le Sheet doivent afficher **les mêmes nombres** pour la même période (vérifier sur novembre).
+- L'export PDF des stats suit le même ordre.
+
+---
+
+## 6. Synchronisation automatique dans les deux sens (site ⇄ Sheet)
+
+Nouvelle demande : **ce qui est rempli d'un côté se remplit automatiquement de l'autre**, sans bouton.
+
+### 6.1 Nouvelle règle (remplace la confirmation manuelle de l'import pour les modifications courantes)
+- Le site et le Sheet sont des **miroirs** à partir du 1er novembre 2026. Pour un culte donné, **la dernière modification gagne**, d'où qu'elle vienne.
+- Site → Sheet : déjà en place à l'enregistrement d'un pointage ; le bloc du culte est maintenant réécrit **même s'il avait été saisi à la main**, à condition que le site ait déjà importé la dernière version du Sheet (empreinte identique). Si le Sheet a changé depuis la dernière synchro et que le site n'a pas encore récupéré ce changement → on importe d'abord le Sheet, puis on affiche un message de conflit au lieu d'écraser (« Le Sheet a été modifié entre-temps : vérifiez le pointage avant d'enregistrer à nouveau »).
+- Sheet → site : automatique (6.2). Une case vide dans le Sheet efface la valeur du site seulement si elle avait été remplie par le Sheet ; une ligne de service vidée dans le Sheet est supprimée du site.
+- **Historique** : avant chaque écrasement (d'un côté ou de l'autre), enregistrer la version précédente du culte dans une table `CulteHistorique` (date, source « site » ou « sheet », JSON services + effectifs). Page Stats → « Historique de synchro » avec un bouton « Restaurer » par version. Rien ne doit pouvoir être perdu définitivement.
+- Septembre et octobre ne sont jamais synchronisés.
+- La page d'aperçu « Récupérer depuis le Google Sheet » reste disponible pour le rattrapage manuel.
+
+### 6.2 Sheet → site en temps réel : Google Apps Script
+- Dans le Sheet : Extensions → Apps Script, script `Synchro planning` avec une fonction `surModification(e)` liée à un **déclencheur installable « Lors de la modification »** (un déclencheur simple `onEdit` ne peut pas appeler d'URL).
+- Elle ne réagit qu'aux onglets mensuels (« Novembre 2026 »…), colonnes A à D (services) et O à R lignes 3 à 7 (effectifs). Elle envoie `POST https://planning-ejp.vercel.app/api/sheet/modification` avec `{onglet, ligne, colonne}` et l'en-tête `X-Sheet-Secret: <SHEET_WEBHOOK_SECRET>` (secret stocké dans les Propriétés du script, jamais dans le code).
+- Anti-rafale : `CacheService` pour ne pas envoyer plus d'un appel par bloc toutes les 5 s (l'appel suivant relit tout le bloc, rien n'est perdu), `muteHttpExceptions: true`.
+- Les écritures faites par le site via l'API ne déclenchent pas le script : pas de boucle.
+- Fournir le code du script dans `docs/apps-script/synchro.gs` + un mode d'emploi pas à pas pour l'installer (Morel le fera faire par Claude dans Chrome).
+- Côté site : route `POST /api/sheet/modification` (sans session, protégée par `SHEET_WEBHOOK_SECRET` comparé en temps constant ; 401 sinon), qui retrouve le culte du bloc touché (rang du dimanche → date), relit le bloc et ses effectifs via l'API, et applique l'import automatiquement (règles 6.1 + historique). Réponse rapide (< 8 s), idempotente.
+- Filet de sécurité : au chargement de la page Stats, si la dernière synchro Sheet → site date de plus de 10 min, relancer un import automatique des cultes du mois en cours (sans aperçu, avec historique).
+- Nouvelle variable d'environnement : `SHEET_WEBHOOK_SECRET` (longue chaîne aléatoire, en local et sur Vercel, type sensitive).
+
+### 6.3 Tests
+Faux client + client HTTP de test FastAPI : modification Sheet → site ; modification site → Sheet après import ; conflit (Sheet modifié après la dernière synchro) → pas d'écrasement ; historique créé et restauration ; webhook sans secret → 401 ; septembre/octobre ignorés.
