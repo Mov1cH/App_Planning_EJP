@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Absences{% endblock %}
+{% block title %}Indisponibilités{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">{% endblock %}
 {% block content %}
 {% set nb_avenir = a_venir.values()|map('length')|sum %}
 <div class="page-head">
   <div>
-    <h1 class="page-title">Absences</h1>
+    <h1 class="page-title">Indisponibilités</h1>
     <p class="page-sub">Les dimanches où un membre ne peut pas servir. Le planning en tient compte automatiquement.</p>
   </div>
 </div>
 
 <div class="layout-side">
   <section aria-labelledby="avenir-titre" data-filter-list>
-    <h2 id="avenir-titre" class="sr-only">Absences à venir</h2>
+    <h2 id="avenir-titre" class="sr-only">Indisponibilités à venir</h2>
     {% if a_venir %}
     <div class="filters">
       <label class="input-icon">
@@ -34,7 +34,7 @@
           </div>
           <span class="ops">
             <a class="icon-btn" href="/indisponibilites/{{ i.id }}/modifier" aria-label="Modifier">{{ icon('pencil') }}</a>
-            <form action="/indisponibilites/{{ i.id }}/supprimer" method="post"><button class="icon-btn danger" type="submit" aria-label="Supprimer l'absence de {{ nom_complet(i.membre) if i.membre else '' }}">{{ icon('trash') }}</button></form>
+            <form action="/indisponibilites/{{ i.id }}/supprimer" method="post"><button class="icon-btn danger" type="submit" aria-label="Supprimer l'indisponibilité de {{ nom_complet(i.membre) if i.membre else '' }}">{{ icon('trash') }}</button></form>
           </span>
         </li>
         {% endfor %}
@@ -43,17 +43,17 @@
     {% endfor %}
     <p class="muted" data-filter-empty hidden style="padding:24px 0">Aucun résultat.</p>
     {% else %}
-    <div class="empty"><h3>Aucune absence à venir</h3><p>Tout le monde est disponible pour les prochains cultes.</p></div>
+    <div class="empty"><h3>Aucune indisponibilité à venir</h3><p>Tout le monde est disponible pour les prochains cultes.</p></div>
     {% endif %}
 
     {% if passees or total %}
     <div class="actions" style="margin-top:32px">
       {% if passees %}
-      <form action="/indisponibilites/supprimer-passees" method="post" data-confirm="Les {{ passees|length }} absences passées seront supprimées. Les absences à venir sont conservées." data-confirm-title="Nettoyer l'historique ?" data-confirm-ok="Nettoyer">
-        <button class="btn btn-quiet" type="submit">{{ icon('trash') }} Effacer les {{ passees|length }} absences passées</button>
+      <form action="/indisponibilites/supprimer-passees" method="post" data-confirm="Les {{ passees|length }} indisponibilités passées seront supprimées. Les indisponibilités à venir sont conservées." data-confirm-title="Nettoyer l'historique ?" data-confirm-ok="Nettoyer">
+        <button class="btn btn-quiet" type="submit">{{ icon('trash') }} Effacer les {{ passees|length }} indisponibilités passées</button>
       </form>
       {% endif %}
-      <form action="/indisponibilites/supprimer-tout" method="post" data-confirm="Toutes les absences ({{ total }}), passées et à venir, seront supprimées." data-confirm-title="Tout supprimer ?" data-confirm-ok="Tout supprimer">
+      <form action="/indisponibilites/supprimer-tout" method="post" data-confirm="Toutes les indisponibilités ({{ total }}), passées et à venir, seront supprimées." data-confirm-title="Tout supprimer ?" data-confirm-ok="Tout supprimer">
         <button class="btn btn-quiet" type="submit">Tout supprimer</button>
       </form>
     </div>
@@ -61,7 +61,7 @@
   </section>
 
   <aside class="panel" aria-labelledby="ajout-titre">
-    <h2 id="ajout-titre">Signaler une absence</h2>
+    <h2 id="ajout-titre">Signaler une indisponibilité</h2>
     <form action="/indisponibilites" method="post">
       <div class="field">
         <label class="label" for="membre_id">Membre</label>
@@ -76,7 +76,7 @@
       </div>
       <fieldset>
         <legend>Activités concernées</legend>
-        <p class="hint" style="margin:-4px 0 10px">Sans sélection, la personne est absente pour tout le culte.</p>
+        <p class="hint" style="margin:-4px 0 10px">Sans sélection, la personne est indisponible pour tout le culte.</p>
         {% with nom_champ='role_ids', coches=[] %}{% include "_role_chips.html" %}{% endwith %}
       </fieldset>
       <button class="btn btn-dark btn-block" type="submit" data-loading>Enregistrer</button>

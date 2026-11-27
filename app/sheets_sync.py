@@ -120,6 +120,8 @@ class Effectifs:
     femmes: Optional[str] = None
     ados: Optional[str] = None
     enfants: Optional[str] = None
+    nouveaux: Optional[str] = None
+    nouveaux_noms: Optional[str] = None
 
 
 @dataclass
@@ -170,7 +172,7 @@ class SheetsClient(ABC):
 
     @abstractmethod
     def creer_onglet_mensuel(self, nouveau: str, depuis: str) -> None:
-        """Duplique l'onglet ``depuis``, le renomme ``nouveau``, vide les valeurs (A2:D et O3:R7, fusions et
+        """Duplique l'onglet ``depuis``, le renomme ``nouveau``, vide les valeurs (A2:D, O3:R7 et T3:U7 ; la colonne S de formules est gardée ; fusions et
         validations conservées) et remet 1 à 5 en colonne A. Ne touche jamais un onglet déjà existant."""
 
     @abstractmethod
@@ -283,7 +285,7 @@ def synchroniser_culte(db: Session, client: Optional[SheetsClient], culte: model
         eff_sync = _effectifs_sync(sync)
         actuel = [tuple(v) for v in bloc.valeurs]
         eff_sheet = client.lire_effectifs(onglet, numero)
-        eff_sheet_int = {k: _entier_sheet(getattr(eff_sheet, k, None)) for k in EFFECTIFS}
+        eff_sheet_int = {k: _valeur_sheet(k, getattr(eff_sheet, k, None)) for k in EFFECTIFS}
 
         # Le Sheet est « connu » s'il est vide ou s'il contient exactement ce qui a été synchronisé la dernière fois.
         bloc_connu = bloc.vide or bool(sync and sync.empreinte and empreinte_bloc(actuel) == sync.empreinte)
@@ -374,7 +376,10 @@ def synchroniser_plage(db: Session, client: Optional[SheetsClient], eglise_id: i
 # différente) est une saisie manuelle : le Sheet fait foi. Rien n'est modifié dans le site sans
 # confirmation : ``preparer_import`` ne fait que lire et calculer un aperçu, ``appliquer_import`` écrit.
 
-EFFECTIFS = ("hommes", "femmes", "ados", "enfants")
+EFFECTIFS = ("hommes", "femmes", "ados", "enfants", "nouveaux", "nouveaux_noms")
+# Colonnes du tableau d'effectifs dans chaque onglet mensuel (ligne = 2 + n° du culte).
+# S = « Total » du culte (formule du Sheet) : jamais écrit par le site.
+COLONNES_EFFECTIFS = {"hommes": "O", "femmes": "P", "ados": "Q", "enfants": "R", "nouveaux": "T", "nouveaux_noms": "U"}
 
 
 @dataclass
@@ -396,6 +401,14 @@ class ImportCulte:
         return self.jour.isoformat()
 
 
+def _valeur_sheet(cle: str, valeur):
+    """Valeur d'une case d'effectif : texte nettoyé pour les prénoms des nouveaux venus, entier sinon."""
+    if cle == "nouveaux_noms":
+        texte = re.sub(r"\s+", " ", str(valeur or "")).strip()
+        return texte or None
+    return _entier_sheet(valeur)
+
+
 def _entier_sheet(valeur) -> Optional[int]:
     """« 14 », 14, « 14,0 » -> 14 ; vide ou illisible -> None."""
     if valeur in (None, ""):
@@ -408,7 +421,8 @@ def _entier_sheet(valeur) -> Optional[int]:
 
 def _effectifs_sync(sync) -> Dict[str, int]:
     try:
-        return {k: int(v) for k, v in json.loads(sync.effectifs).items()} if sync and sync.effectifs else {}
+        return {k: (v if k == "nouveaux_noms" else int(v)) for k, v in json.loads(sync.effectifs).items()} \
+            if sync and sync.effectifs else {}
     except (TypeError, ValueError):
         return {}
 
@@ -478,7 +492,7 @@ def preparer_import(db: Session, client: Optional[SheetsClient], eglise_id: int,
                 eff_sheet = client.lire_effectifs(onglet, numero)
             except (KeyError, LookupError):
                 eff_sheet = None
-            effectifs_sheet = {k: _entier_sheet(getattr(eff_sheet, k, None)) for k in EFFECTIFS}
+            effectifs_sheet = {k: _valeur_sheet(k, getattr(eff_sheet, k, None)) for k in EFFECTIFS}
             if bloc.vide and all(v is None for v in effectifs_sheet.values()):
                 continue  # rien de saisi dans le Sheet pour ce culte
 
@@ -542,7 +556,7 @@ def appliquer_import(db: Session, eglise_id: int, items: List[ImportCulte], cles
                 db.commit()  # l'ancienne version est en sécurité AVANT de la remplacer
             culte = stats.enregistrer_culte(
                 db, eglise_id, it.jour, it.effectifs["hommes"], it.effectifs["femmes"], it.lignes,
-                it.effectifs["ados"], it.effectifs["enfants"],
+                it.effectifs["ados"], it.effectifs["enfants"], it.effectifs["nouveaux"], it.effectifs["nouveaux_noms"],
             )
             n += 1
         else:
@@ -640,7 +654,8 @@ def restaurer_version(db: Session, eglise_id: int, historique_id: int) -> Option
         db.commit()
     eff = contenu.get("effectifs", {})
     return stats.enregistrer_culte(db, eglise_id, h.date, eff.get("hommes"), eff.get("femmes"),
-                                   [tuple(l) for l in contenu.get("services", [])], eff.get("ados"), eff.get("enfants"))
+                                   [tuple(l) for l in contenu.get("services", [])], eff.get("ados"), eff.get("enfants"),
+                                   eff.get("nouveaux"), eff.get("nouveaux_noms"))
 
 
 def jour_depuis_cellule(client: SheetsClient, onglet: str, ligne: int) -> Optional[date]:
@@ -779,15 +794,15 @@ class GoogleSheetsClient(SheetsClient):
 
     def lire_effectifs(self, onglet: str, numero_culte: int) -> Effectifs:
         ligne = 2 + numero_culte
-        valeurs = self._get(f"{SHEETS_API}/{self._sheet_id}/values/'{onglet}'!O{ligne}:R{ligne}").get("values", [[]])
+        valeurs = self._get(f"{SHEETS_API}/{self._sheet_id}/values/'{onglet}'!O{ligne}:U{ligne}").get("values", [[]])
         row = valeurs[0] if valeurs else []
         get = lambda i: row[i] if len(row) > i else None  # noqa: E731
-        return Effectifs(ligne=ligne, hommes=get(0), femmes=get(1), ados=get(2), enfants=get(3))
+        return Effectifs(ligne=ligne, hommes=get(0), femmes=get(1), ados=get(2), enfants=get(3),
+                         nouveaux=get(5), nouveaux_noms=get(6))  # get(4) = colonne S, total calculé par le Sheet
 
     def ecrire_effectifs(self, onglet: str, numero_culte: int, valeurs: Dict[str, int]) -> None:
         ligne = 2 + numero_culte
-        colonnes = {"hommes": "O", "femmes": "P", "ados": "Q", "enfants": "R"}
-        data = [{"range": f"'{onglet}'!{colonnes[cle]}{ligne}", "values": [[v]]} for cle, v in valeurs.items()]
+        data = [{"range": f"'{onglet}'!{COLONNES_EFFECTIFS[cle]}{ligne}", "values": [[v]]} for cle, v in valeurs.items()]
         if data:
             self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchUpdate",
                        {"valueInputOption": "USER_ENTERED", "data": data})
@@ -826,7 +841,7 @@ class GoogleSheetsClient(SheetsClient):
 
         # Fusions et validations sont conservées par duplicateSheet ; seules les valeurs sont vidées.
         self._post(f"{SHEETS_API}/{self._sheet_id}/values:batchClear",
-                   {"ranges": [f"'{nouveau}'!A2:D500", f"'{nouveau}'!O3:R7"]})
+                   {"ranges": [f"'{nouveau}'!A2:D500", f"'{nouveau}'!O3:R7", f"'{nouveau}'!T3:U7"]})
 
         nouvelle_feuille = self._feuille(nouveau)
         lignes_a = sorted(

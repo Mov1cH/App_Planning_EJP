@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Modifier une absence{% endblock %}
+{% block title %}Modifier une indisponibilité{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">{% endblock %}
 {% block content %}
-<a class="back" href="/indisponibilites">{{ icon('arrow-left', 'i-sm') }} Absences</a>
-<div class="page-head"><h1 class="page-title">Modifier l'absence</h1></div>
+<a class="back" href="/indisponibilites">{{ icon('arrow-left', 'i-sm') }} Indisponibilités</a>
+<div class="page-head"><h1 class="page-title">Modifier l'indisponibilité</h1></div>
 <form class="form-narrow" action="/indisponibilites/{{ indispo.id }}/modifier" method="post">
   <div class="field">
     <label class="label" for="membre_id">Membre</label>

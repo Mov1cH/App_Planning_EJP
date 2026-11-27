@@ -35,13 +35,13 @@
           {% if it.action == 'remplacer' %}
           <div>
             <b>Avant (site)</b>
-            <ul>{% for d, p, s in it.avant_lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
+            <ul>{% for d, p, s in it.avant_lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'service manqué' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
             <p class="meta">Effectif : {{ it.avant_effectifs.hommes if it.avant_effectifs.hommes is not none else '–' }} H · {{ it.avant_effectifs.femmes if it.avant_effectifs.femmes is not none else '–' }} F · {{ it.avant_effectifs.ados if it.avant_effectifs.ados is not none else '–' }} Ados · {{ it.avant_effectifs.enfants if it.avant_effectifs.enfants is not none else '–' }} Enfants</p>
           </div>
           {% endif %}
           <div>
             <b>{% if it.action == 'remplacer' %}Après (Sheet){% else %}Depuis le Sheet{% endif %}</b>
-            <ul>{% for d, p, s in it.lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
+            <ul>{% for d, p, s in it.lignes %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'service manqué' }}</li>{% else %}<li>Aucun service</li>{% endfor %}</ul>
             <p class="meta">Effectif : {{ it.effectifs.hommes if it.effectifs.hommes is not none else '–' }} H · {{ it.effectifs.femmes if it.effectifs.femmes is not none else '–' }} F · {{ it.effectifs.ados if it.effectifs.ados is not none else '–' }} Ados · {{ it.effectifs.enfants if it.effectifs.enfants is not none else '–' }} Enfants</p>
           </div>
         </div>

@@ -6,7 +6,7 @@
   <div>
     <a class="back" href="/stats?type=mois&annee={{ jour.year }}&n={{ jour.month }}">{{ icon('arrow-left') }} Stats</a>
     <h1 class="page-title">{{ jour.day }} {{ MOIS_FR[jour.month]|lower }} <span class="year year-acc">{{ jour.year }}</span></h1>
-    <p class="page-sub">{% if culte %}Pointage enregistré. Vous pouvez le corriger.{% else %}Pré-rempli avec le planning du jour : corrigez seulement les absents et les remplaçants.{% endif %}</p>
+    <p class="page-sub">{% if culte %}Pointage enregistré. Vous pouvez le corriger.{% else %}Pré-rempli avec le planning du jour : corrigez seulement les services manqués et les remplaçants.{% endif %}</p>
   </div>
   <div class="actions">
     <form class="jump" action="/stats/culte" method="get" aria-label="Choisir un autre culte">
@@ -34,11 +34,15 @@
       <label class="field"><span class="label">Enfants</span><input class="input" type="number" inputmode="numeric" min="0" max="100000" name="enfants" value="{{ culte.enfants if culte and culte.enfants is not none else '' }}" data-eff></label>
       <div class="effectif-total"><span class="label">Total</span><b data-eff-total>–</b></div>
     </div>
+    <div class="nouveaux">
+      <label class="field"><span class="label">Nouveaux venus</span><input class="input" type="number" inputmode="numeric" min="0" max="10000" name="nouveaux" value="{{ culte.nouveaux if culte and culte.nouveaux is not none else '' }}"></label>
+      <label class="field"><span class="label">Leurs prénoms (facultatif)</span><input class="input" type="text" name="nouveaux_noms" maxlength="500" autocomplete="off" placeholder="Ex. : Paul, Grâce, Josué" value="{{ culte.nouveaux_noms if culte and culte.nouveaux_noms else '' }}"></label>
+    </div>
   </section>
 
   {% if a_des_stars %}<p class="pt-legend"><i></i>Bordure en pointillé : nom absent de la <a class="link" href="/stars">liste des STAR</a>.</p>
   {% else %}<p class="notice">La liste des STAR est vide : les suggestions viennent des membres du planning. <a class="link" href="/stars">Créer la liste des STAR</a></p>{% endif %}
-  <div class="pt-summary" aria-live="polite"><span data-sum-present>0</span> présents · <span data-sum-absent>0</span> absents · <span data-sum-remplace>0</span> remplacés</div>
+  <div class="pt-summary" aria-live="polite"><span data-sum-present>0</span> présents · <span data-sum-absent>0</span> services manqués · <span data-sum-remplace>0</span> remplacés</div>
 
   <div id="groupes">
     {% for dep, rows in groupes %}
@@ -53,7 +57,7 @@
           <input class="input" name="servi" value="{{ r.servi }}" list="membres-liste" placeholder="Personne ayant servi" aria-label="{{ dep }} : personne ayant servi" autocomplete="off">
           <span class="pt-state"></span>
           <span class="pt-ops">
-            <button type="button" class="fchip" data-absent>Absent</button>
+            <button type="button" class="fchip" data-absent>Manqué</button>
             <button type="button" class="icon-btn" data-remove aria-label="Retirer la ligne">{{ icon('x') }}</button>
           </span>
         </div>
@@ -90,7 +94,7 @@
     <input class="input" name="servi" value="" list="membres-liste" placeholder="Personne ayant servi" autocomplete="off">
     <span class="pt-state"></span>
     <span class="pt-ops">
-      <button type="button" class="fchip" data-absent>Absent</button>
+      <button type="button" class="fchip" data-absent>Manqué</button>
       <button type="button" class="icon-btn" data-remove aria-label="Retirer la ligne">{{ icon('x') }}</button>
     </span>
   </div>
@@ -110,8 +114,8 @@
     var e = !p && !s ? "" : !p ? "ajoute" : !s ? "absent" : cle(p) === cle(s) ? "present" : "remplace";
     row.dataset.etat = e;
     verifier(row.querySelector('[name=prevu]')); verifier(row.querySelector('[name=servi]'));
-    el.textContent = { "": "", ajoute: "Ajouté", absent: "Absent", present: "Présent", remplace: "Remplacé" }[e];
-    btn.textContent = e === "absent" ? "Présent" : "Absent";
+    el.textContent = { "": "", ajoute: "Ajouté", absent: "Service manqué", present: "Présent", remplace: "Remplacé" }[e];
+    btn.textContent = e === "absent" ? "Présent" : "Manqué";
     btn.hidden = !p;
     return e;
   }

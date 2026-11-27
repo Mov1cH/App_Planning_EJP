@@ -38,7 +38,7 @@
         <span class="tail">{{ services_mois.get(membre.id, 0) }} en {{ mois_courant }}</span>
         <span class="ops">
           <a class="icon-btn" href="/membres/{{ membre.id }}/modifier" aria-label="Modifier {{ nom_complet(membre) }}">{{ icon('pencil') }}</a>
-          <form action="/membres/{{ membre.id }}/supprimer" method="post" data-confirm="{{ nom_complet(membre) }} sera retiré(e), avec ses absences et ses affectations." data-confirm-title="Supprimer ce membre ?">
+          <form action="/membres/{{ membre.id }}/supprimer" method="post" data-confirm="{{ nom_complet(membre) }} sera retiré(e), avec ses indisponibilités et ses affectations." data-confirm-title="Supprimer ce membre ?">
             <button class="icon-btn danger" type="submit" aria-label="Supprimer {{ nom_complet(membre) }}">{{ icon('trash') }}</button>
           </form>
         </span>

@@ -28,7 +28,7 @@
         </div>
         <span class="ops">
           <a class="icon-btn" href="/roles/{{ role.id }}/modifier" aria-label="Modifier {{ role.nom }}">{{ icon('pencil') }}</a>
-          <form action="/roles/{{ role.id }}/supprimer" method="post" data-confirm="Le rôle « {{ role.nom }} » sera retiré des membres, du planning et des absences." data-confirm-title="Supprimer ce rôle ?">
+          <form action="/roles/{{ role.id }}/supprimer" method="post" data-confirm="Le rôle « {{ role.nom }} » sera retiré des membres, du planning et des indisponibilités." data-confirm-title="Supprimer ce rôle ?">
             <button class="icon-btn danger" type="submit" aria-label="Supprimer {{ role.nom }}">{{ icon('trash') }}</button>
           </form>
         </span>

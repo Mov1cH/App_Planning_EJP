@@ -67,8 +67,8 @@
 <section class="kpis" aria-label="Chiffres clés">
   <div class="kpi"><b>{{ b.cultes|length }}</b><span>culte{{ 's' if b.cultes|length > 1 }} pointé{{ 's' if b.cultes|length > 1 }}</span></div>
   <div class="kpi is-acc"><b>{{ t.taux if t.taux is not none else '–' }}<small>%</small></b><span>de présence ({{ t.presents }} sur {{ t.prevus }} prévus)</span></div>
-  <div class="kpi{{ ' is-alert' if t.absences }}"><b>{{ t.absences }}</b><span>absence{{ 's' if t.absences > 1 }} ou remplacement{{ 's' if t.absences > 1 }}</span></div>
-  <div class="kpi"><b>{{ b.effectif_moyen if b.effectif_moyen is not none else '–' }}</b><span>personnes en moyenne au culte{% if b.hommes_moyen is not none %} · {{ b.hommes_moyen }} H, {{ b.femmes_moyen }} F{% if b.ados_moyen is not none %}, {{ b.ados_moyen }} Ados{% endif %}{% if b.enfants_moyen is not none %}, {{ b.enfants_moyen }} Enfants{% endif %}{% endif %}</span></div>
+  <div class="kpi{{ ' is-alert' if t.absences }}"><b>{{ t.absences }}</b><span>service{{ 's' if t.absences > 1 }} manqué{{ 's' if t.absences > 1 }} (absent ou remplacé)</span></div>
+  <div class="kpi"><b>{{ b.effectif_moyen if b.effectif_moyen is not none else '–' }}</b><span>personnes en moyenne au culte{% if b.hommes_moyen is not none %} · {{ b.hommes_moyen }} H, {{ b.femmes_moyen }} F{% if b.ados_moyen is not none %}, {{ b.ados_moyen }} Ados{% endif %}{% if b.enfants_moyen is not none %}, {{ b.enfants_moyen }} Enfants{% endif %}{% endif %}{% if b.nouveaux_total %} · {{ b.nouveaux_total }} nouveau{{ 'x' if b.nouveaux_total > 1 }} venu{{ 's' if b.nouveaux_total > 1 }}{% endif %}</span></div>
 </section>
 
 {% if p.type != 'mois' %}
@@ -96,8 +96,8 @@
       <li>
         <span class="date">{{ c.date.day }} {{ MOIS_COURTS[c.date.month] }}</span>
         <div class="grow">
-          <div class="title">{{ c.compteurs.services }} services{% if c.compteurs.absences %} <span class="tag-alert">{{ c.compteurs.absences }} absence{{ 's' if c.compteurs.absences > 1 }}</span>{% endif %}</div>
-          <div class="meta">{% if c.effectif is not none %}{{ c.effectif }} personnes · {{ c.hommes or 0 }} H, {{ c.femmes or 0 }} F{% if c.ados %}, {{ c.ados }} Ados{% endif %}{% if c.enfants %}, {{ c.enfants }} Enfants{% endif %}{% else %}Effectif non renseigné{% endif %}</div>
+          <div class="title">{{ c.compteurs.services }} services{% if c.compteurs.absences %} <span class="tag-alert">{{ c.compteurs.absences }} service{{ 's' if c.compteurs.absences > 1 }} manqué{{ 's' if c.compteurs.absences > 1 }}</span>{% endif %}</div>
+          <div class="meta">{% if c.effectif is not none %}{{ c.effectif }} personnes · {{ c.hommes or 0 }} H, {{ c.femmes or 0 }} F{% if c.ados %}, {{ c.ados }} Ados{% endif %}{% if c.enfants %}, {{ c.enfants }} Enfants{% endif %}{% else %}Effectif non renseigné{% endif %}{% if c.nouveaux %} · {{ c.nouveaux }} nouveau{{ 'x' if c.nouveaux > 1 }} venu{{ 's' if c.nouveaux > 1 }}{% if c.nouveaux_noms %} ({{ c.nouveaux_noms }}){% endif %}{% endif %}</div>
         </div>
         <a class="culte-edit" href="/stats/culte?date_str={{ c.date.isoformat() }}" aria-label="Modifier le pointage du {{ c.date.day }} {{ MOIS_FR[c.date.month]|lower }}">{{ icon('pencil') }} Modifier</a>
       </li>
@@ -155,7 +155,7 @@
       {% endfor %}
     </ul>
     {% else %}
-    <p class="muted">Aucune absence : toutes les personnes prévues ont servi.</p>
+    <p class="muted">Aucun service manqué : toutes les personnes prévues ont servi.</p>
     {% endif %}
   </section>
 </div>

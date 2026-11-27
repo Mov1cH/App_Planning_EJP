@@ -22,5 +22,5 @@
 6. Essai réel : modifier une case d'un culte de novembre dans le Sheet, attendre quelques secondes, recharger
    la page Stats du site : la modification doit y être. L'ancienne version est dans **Stats → Historique de synchro**.
 
-Le script ne réagit qu'aux onglets mensuels (« Novembre 2026 »…), colonnes A à D et cases d'effectifs O3:R7.
+Le script ne réagit qu'aux onglets mensuels (« Novembre 2026 »…), colonnes A à D et cases d'effectifs O3:U7 (dont les nouveaux venus en T et U).
 Les écritures faites par le site dans le Sheet ne le déclenchent pas (pas de boucle).

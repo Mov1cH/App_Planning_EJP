@@ -26,9 +26,10 @@ function surModification(e) {
   var colonne = e.range.getColumn();
   var derniereLigne = e.range.getLastRow();
   var derniereColonne = e.range.getLastColumn();
-  // Seules les zones synchronisées : services (A à D) et effectifs (O à R, lignes 3 à 7).
+  // Seules les zones synchronisées : services (A à D) et effectifs (O à U, lignes 3 à 7 : Hommes, Femmes, Ados,
+  // Enfants, Total, Nouveaux venus et leurs prénoms).
   var touchePointage = colonne <= 4;
-  var toucheEffectifs = derniereColonne >= 15 && colonne <= 18 && derniereLigne >= 3 && ligne <= 7;
+  var toucheEffectifs = derniereColonne >= 15 && colonne <= 21 && derniereLigne >= 3 && ligne <= 7;
   if (!touchePointage && !toucheEffectifs) return;
 
   var props = PropertiesService.getScriptProperties();

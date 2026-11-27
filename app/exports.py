@@ -234,7 +234,7 @@ def planning_csv(planning: PlanningMois) -> bytes:
 
 def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> bytes:
     """Bilan du suivi des cultes, A4 portrait, organisé comme le « Tableau de Bord Annuel » du Google Sheet :
-    bilan (6 chiffres clés), Top 10 des STAR et des absences, services prévus et effectués par mois,
+    bilan (6 chiffres clés), Top 10 des STAR et des services manqués, services prévus et effectués par mois,
     puis une section par mois (chiffres clés, services effectués et manqués), et le détail par culte."""
     import io as _io
     from datetime import date as _date
@@ -283,7 +283,7 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
 
     def tuiles(y, cp, dernier_lib, dernier_val, effectif_total):
         valeurs = [("Services prévus", str(cp.prevus), False), ("Services assurés", str(cp.presents), False),
-                   ("Absences", str(cp.absences), bool(cp.absences)),
+                   ("Services manqués", str(cp.absences), bool(cp.absences)),
                    ("Taux de présence", f"{cp.taux} %" if cp.taux is not None else "–", False),
                    ("Effectif total", str(effectif_total), False),
                    (dernier_lib, "–" if dernier_val is None else str(dernier_val), False)]
@@ -402,8 +402,8 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
         y = tuiles(y, t, "STAR actives", b.stars_actives, b.effectif_total)
         y = deux_cartes(y, ("Top 10 des STAR", "Les 10 personnes qui ont servi le plus souvent sur la période.",
                             b.effectues[:10], sapin, "Aucun service sur la période."),
-                        ("Top 10 des absences", "Prévus le plus souvent absents ou remplacés sur la période.",
-                         b.manques[:10], terre, "Aucune absence sur la période."))
+                        ("Top 10 des services manqués", "Personnes prévues qui ont le plus souvent manqué leur service.",
+                         b.manques[:10], terre, "Aucun service manqué sur la période."))
         y = colonnes_mois(y)
 
     for lm in b.par_mois:
@@ -414,12 +414,12 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
         y = deux_cartes(y, (f"{MOIS_FR[lm.mois]} : services effectués", "Nombre de fois où chaque STAR a servi ce mois-ci.",
                             lm.effectues, vert, "Aucun service pointé ce mois-ci."),
                         (f"{MOIS_FR[lm.mois]} : services manqués", "Nombre de fois où chaque personne prévue n'a pas servi.",
-                         lm.manques, terre, "Aucune absence ce mois-ci."))
+                         lm.manques, terre, "Aucun service manqué ce mois-ci."))
 
     # ----- Détail par culte (effectifs comme dans le Sheet) -----
     y = bande(y, "Détail par culte", besoin=40 + 17 * min(len(b.cultes), 6))
-    colonnes = [("Date", M + 8)] + [(lib, M + 115 + 50 * i) for i, lib in enumerate(
-        ("Hommes", "Femmes", "Ados", "Enfants", "Total", "Services", "Présence", "Absences"))]
+    colonnes = [("Date", M + 8)] + [(lib, M + 108 + 46 * i) for i, lib in enumerate(
+        ("Hommes", "Femmes", "Ados", "Enfants", "Total", "Nouveaux", "Services", "Présence", "Manqués"))]
     c.setFillColor(sapin); c.setFont("Inter-Bold", 8)
     for lib, x in colonnes:
         c.drawString(x, y, lib)
@@ -431,13 +431,29 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
         vals = [f"{lc.date.day} {MOIS_FR[lc.date.month].lower()}",
                 "–" if lc.hommes is None else str(lc.hommes), "–" if lc.femmes is None else str(lc.femmes),
                 "–" if lc.ados is None else str(lc.ados), "–" if lc.enfants is None else str(lc.enfants),
-                "–" if lc.effectif is None else str(lc.effectif),
+                "–" if lc.effectif is None else str(lc.effectif), "–" if not lc.nouveaux else str(lc.nouveaux),
                 str(cp.services), "–" if cp.taux is None else f"{cp.taux} %", str(cp.absences)]
         for (lib, x), v in zip(colonnes, vals):
-            c.setFillColor(terre if lib == "Absences" and cp.absences else noir)
+            c.setFillColor(terre if lib == "Manqués" and cp.absences else noir)
             c.setFont("Inter-Bold" if lib in ("Date", "Total") else "Inter-Regular", 8.5)
             c.drawString(x, y - 9, v)
         y -= 17
+
+    # ----- Nouveaux venus -----
+    avec_noms = [lc for lc in b.cultes if lc.nouveaux or lc.nouveaux_noms]
+    if avec_noms:
+        y -= 10
+        y = bande(y, f"Nouveaux venus · {b.nouveaux_total} sur la période", besoin=40 + 16 * min(len(avec_noms), 6))
+        for lc in avec_noms:
+            noms = _lignes(lc.nouveaux_noms or "Prénoms non renseignés", "Inter-Regular", 8.5, LARG - 150)
+            y = place(y, 6 + 12 * len(noms))
+            c.setFillColor(noir); c.setFont("Inter-Bold", 8.5)
+            c.drawString(M + 8, y - 9, f"{lc.date.day} {MOIS_FR[lc.date.month].lower()}")
+            c.setFillColor(sapin); c.drawString(M + 90, y - 9, str(lc.nouveaux or "–"))
+            c.setFillColor(noir if lc.nouveaux_noms else gris); c.setFont("Inter-Regular", 8.5)
+            for k, l in enumerate(noms):
+                c.drawString(M + 120, y - 9 - 12 * k, l)
+            y -= 8 + 12 * len(noms)
 
     pied()
     c.showPage()

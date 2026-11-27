@@ -169,13 +169,16 @@ def lignes_proposees(db: Session, eglise_id: int, jour: date) -> List[dict]:
 
 def enregistrer_culte(db: Session, eglise_id: int, jour: date, hommes: Optional[int], femmes: Optional[int],
                       lignes: List[Tuple[str, str, str]], ados: Optional[int] = None,
-                      enfants: Optional[int] = None) -> models.Culte:
+                      enfants: Optional[int] = None, nouveaux: Optional[int] = None,
+                      nouveaux_noms: Optional[str] = None) -> models.Culte:
     culte = culte_du_jour(db, eglise_id, jour)
     if not culte:
         culte = models.Culte(eglise_id=eglise_id, date=jour)
         db.add(culte)
     culte.hommes, culte.femmes = hommes, femmes
     culte.ados, culte.enfants = ados, enfants
+    culte.nouveaux = nouveaux
+    culte.nouveaux_noms = nettoyer(nouveaux_noms, 500) or None
     from datetime import datetime
     culte.updated_at = datetime.utcnow()
     culte.services.clear()
@@ -213,6 +216,8 @@ class LigneCulte:
     compteurs: Compteurs
     ados: Optional[int] = None
     enfants: Optional[int] = None
+    nouveaux: Optional[int] = None
+    nouveaux_noms: Optional[str] = None
 
     @property
     def effectif(self) -> Optional[int]:
@@ -254,6 +259,11 @@ class Bilan:
     def effectif_total(self) -> int:
         """Somme des effectifs (H + F + Ados + Enfants) de tous les cultes : « Effectif total » du Sheet."""
         return sum(c.effectif or 0 for c in self.cultes)
+
+    @property
+    def nouveaux_total(self) -> int:
+        """Nombre de nouveaux venus sur la période."""
+        return sum(c.nouveaux or 0 for c in self.cultes)
 
     @property
     def stars_actives(self) -> int:
@@ -321,7 +331,7 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         cpt = Compteurs()
         _compter(c.services, cpt)
         _compter(c.services, total)
-        lc = LigneCulte(c.date, c.hommes, c.femmes, cpt, c.ados, c.enfants)
+        lc = LigneCulte(c.date, c.hommes, c.femmes, cpt, c.ados, c.enfants, c.nouveaux, c.nouveaux_noms)
         lignes.append(lc)
         par_mois_c[(c.date.year, c.date.month)].append(lc)
         for s in c.services:

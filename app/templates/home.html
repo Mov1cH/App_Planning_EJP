@@ -7,7 +7,7 @@
   <span class="who">{{ current_eglise.nom_eglise }}</span>
   <span class="when hide-sm">{{ aujourd_hui|date_fr|replace(' ' ~ aujourd_hui.year, '') }}</span>
   <div class="actions">
-    <a class="btn" href="/indisponibilites">Signaler une absence</a>
+    <a class="btn" href="/indisponibilites">Signaler une indisponibilité</a>
     <a class="btn btn-acc" href="/generateur?annee={{ dimanche.year }}&mois={{ dimanche.month }}">Planning de {{ MOIS_FR[dimanche.month]|lower }}</a>
   </div>
 </div>
@@ -31,7 +31,7 @@
     <div class="hero-day" aria-hidden="true">{{ '%02d'|format(dimanche.day) }}</div>
     <div class="hero-month" aria-hidden="true">{{ MOIS_FR[dimanche.month] }}</div>
     <p class="hero-note">
-      {% if planning.est_vide or not equipe %}Le planning de {{ MOIS_FR[dimanche.month]|lower }} n'est pas encore prêt. Générez-le en tenant compte des absences.
+      {% if planning.est_vide or not equipe %}Le planning de {{ MOIS_FR[dimanche.month]|lower }} n'est pas encore prêt. Générez-le en tenant compte des indisponibilités.
       {% elif complet %}Toute l'équipe est en place.
       {% else %}{{ manquants }} rôle{{ 's' if manquants > 1 }} sans personne pour l'instant.{% endif %}
     </p>
@@ -75,11 +75,11 @@
   {% else %}
   <a class="fact is-good" href="/generateur?annee={{ planning.annee }}&mois={{ planning.mois }}"><b>100 %</b><span>de {{ MOIS_FR[planning.mois]|lower }} pourvu</span></a>
   {% endif %}
-  <a class="fact" href="/indisponibilites"><b>{{ stats.indispos }}</b><span>absence{{ 's' if stats.indispos > 1 }} signalée{{ 's' if stats.indispos > 1 }} à venir</span></a>
+  <a class="fact" href="/indisponibilites"><b>{{ stats.indispos }}</b><span>indisponibilité{{ 's' if stats.indispos > 1 }} signalée{{ 's' if stats.indispos > 1 }} à venir</span></a>
 </section>
 
 <section class="section" aria-labelledby="abs-titre">
-  <div class="section-head"><h2 id="abs-titre">Absences à venir</h2><a class="link" href="/indisponibilites">Tout voir</a></div>
+  <div class="section-head"><h2 id="abs-titre">Indisponibilités à venir</h2><a class="link" href="/indisponibilites">Tout voir</a></div>
   {% if indispos %}
   <ul class="rows">
     {% for i in indispos %}
@@ -91,7 +91,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p class="muted">Personne n'a signalé d'absence pour le mois à venir.</p>
+  <p class="muted">Personne n'a signalé d'indisponibilité pour le mois à venir.</p>
   {% endif %}
 </section>
 {% endblock %}

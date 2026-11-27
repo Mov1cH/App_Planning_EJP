@@ -193,6 +193,8 @@ class Culte(Base):
     date = Column(Date, index=True)
     hommes = Column(Integer, nullable=True)
     femmes = Column(Integer, nullable=True)
+    nouveaux = Column(Integer, nullable=True)  # nouveaux venus ce dimanche (non compris dans le total)
+    nouveaux_noms = Column(Text, nullable=True)  # leurs prénoms, séparés par des virgules (facultatif)
     ados = Column(Integer, nullable=True)
     enfants = Column(Integer, nullable=True)
     updated_at = Column(DateTime)

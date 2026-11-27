@@ -27,7 +27,7 @@
           <span class="pick-body">
             <span class="pick-name">{{ nom_complet(m) }}</span>
             <span class="meta" style="display:block">
-              {% if off %}<span class="tag tag-alert">Absent ce jour</span>{% endif %}
+              {% if off %}<span class="tag tag-alert">Indisponible ce jour</span>{% endif %}
               {% if ailleurs %}<span class="tag">Déjà : {{ ailleurs|join(', ') }}</span>{% endif %}
               <span class="tag">{{ compteur.get(m.id, 0) }} service{{ 's' if compteur.get(m.id, 0) > 1 }} ce mois</span>
             </span>

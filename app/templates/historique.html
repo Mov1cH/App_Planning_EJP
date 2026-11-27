@@ -34,7 +34,7 @@
       <div class="title">Version {{ 'du site' if v.source == 'site' else 'du Google Sheet' }} {{ v.raison }}</div>
       <div class="meta">Mise de côté le {{ v.cree_le.strftime('%d/%m/%Y à %H:%M') }} (UTC) · {{ l.services|length }} service(s){% set e = l.effectifs %}{% if e %} · {{ e.hommes if e.hommes is not none else '–' }} H, {{ e.femmes if e.femmes is not none else '–' }} F, {{ e.ados if e.ados is not none else '–' }} Ados, {{ e.enfants if e.enfants is not none else '–' }} Enfants{% endif %}</div>
       <details><summary>Voir le détail</summary>
-        <ul class="historique-detail">{% for d, p, s in l.services %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'absent' }}</li>{% endfor %}</ul>
+        <ul class="historique-detail">{% for d, p, s in l.services %}<li>{{ d }} : {{ p or '–' }} → {{ s or 'service manqué' }}</li>{% endfor %}</ul>
       </details>
     </div>
     <form action="/stats/historique/{{ v.id }}/restaurer" method="post" data-confirm="Le pointage actuel du {{ v.date|date_fr('jour') }} sera remplacé par cette version (il restera dans l'historique)." data-confirm-title="Restaurer cette version ?" data-confirm-ok="Restaurer">

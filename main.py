@@ -938,7 +938,7 @@ def post_generer_planning(request: Request, annee: int = Form(...), mois: int = 
         # Mois déjà planifié : on propose une autre combinaison, sans toucher au planning validé.
         manquants, nouvelle = services.proposer_planning(db, eglise.id, annee, mois)
         if not nouvelle:
-            flash(request, "Pas d'autre combinaison possible avec les membres et absences actuels.", "attention")
+            flash(request, "Pas d'autre combinaison possible avec les membres et indisponibilités actuels.", "attention")
         elif manquants:
             flash(request, f"Nouvelle proposition pour {nom_mois} : {manquants} place(s) restent à pourvoir. "
                            "Validez-la pour l'enregistrer.", "attention")
@@ -1621,7 +1621,8 @@ async def post_pointage(request: Request, db: Session = Depends(get_db), eglise:
     deps, prevus, servis = form.getlist("departement"), form.getlist("prevu"), form.getlist("servi")
     lignes = list(zip(deps, prevus, servis))[:300]
     culte = stats.enregistrer_culte(db, eglise.id, jour, _entier(form.get("hommes")), _entier(form.get("femmes")), lignes,
-                                     _entier(form.get("ados")), _entier(form.get("enfants")))
+                                     _entier(form.get("ados")), _entier(form.get("enfants")),
+                                     _entier(form.get("nouveaux")), str(form.get("nouveaux_noms") or ""))
     flash(request, f"Culte du {_format_date(jour, 'jour')} {jour.year} enregistré : {len(culte.services)} service(s).")
     resultat = sheets_sync.synchroniser_culte(db, sheets_sync.client_depuis_env(), culte)
     if resultat.statut == "erreur":

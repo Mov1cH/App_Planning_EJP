@@ -31,7 +31,7 @@
 {% elif planning.est_vide %}
 <div class="weeks-empty">
   <h2>{{ MOIS_FR[m] }} n'est pas encore planifié</h2>
-  <p>Le planning est réparti équitablement entre les membres et respecte les absences signalées. Vous pourrez ensuite modifier chaque case.</p>
+  <p>Le planning est réparti équitablement entre les membres et respecte les indisponibilités signalées. Vous pourrez ensuite modifier chaque case.</p>
   <form action="/generer_planning" method="post">
     <input type="hidden" name="annee" value="{{ a }}"><input type="hidden" name="mois" value="{{ m }}">
     <button class="btn btn-acc" type="submit" data-loading>{{ icon('sparkles') }} Générer {{ MOIS_FR[m]|lower }}</button>

@@ -387,7 +387,7 @@ _COLONNES_AJOUTEES = {
     },
     "roles": {"ordre": "INTEGER DEFAULT 0"},
     "membres": {"prenom": "VARCHAR"},
-    "cultes": {"ados": "INTEGER", "enfants": "INTEGER"},
+    "cultes": {"ados": "INTEGER", "enfants": "INTEGER", "nouveaux": "INTEGER", "nouveaux_noms": "TEXT"},
     "sheet_sync": {"effectifs": "TEXT"},
 }
 

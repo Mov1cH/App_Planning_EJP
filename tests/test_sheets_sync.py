@@ -557,3 +557,33 @@ def test_pages_stats_et_pdf_repondent(monkeypatch, tmp_path):
             assert r.status_code == 200 and r.content[:4] == b"%PDF"
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_nouveaux_venus_synchronises_dans_les_deux_sens(db):
+    from app import stats
+    eglise = _eglise(db)
+    culte = stats.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Anne")], None, None, 2, "Paul,  Grâce")
+    client, numero = _client_import([], nb_lignes=3)
+    assert ss.synchroniser_culte(db, client, culte).statut == "ok"
+    eff = client.onglets[ONGLET]["effectifs"][numero]
+    assert (eff.nouveaux, eff.nouveaux_noms) == (2, "Paul, Grâce")
+    # Ajout d'un nouveau venu dans le Sheet -> récupéré sur le site
+    eff.nouveaux, eff.nouveaux_noms = "3", "Paul, Grâce, Josué"
+    ss.importer_auto(db, client, eglise.id, jours=[JOUR])
+    c = stats_culte(db, eglise.id)
+    assert (c.nouveaux, c.nouveaux_noms) == (3, "Paul, Grâce, Josué")
+    assert c.hommes == 10 and len(c.services) == 1  # le reste du pointage est intact
+
+
+def test_les_nouveaux_venus_ne_comptent_pas_dans_l_effectif():
+    from app import stats
+    lc = stats.LigneCulte(JOUR, 10, 12, stats.Compteurs(), 3, 4, 5, "A, B")
+    assert lc.effectif == 29
+
+
+def test_ecriture_des_effectifs_ne_touche_jamais_la_colonne_total():
+    c = _ClientGoogleSimule([(53, 67)], [])
+    c.ecrire_effectifs(ONGLET, 4, {"hommes": 10, "enfants": 3, "nouveaux": 2, "nouveaux_noms": "Paul, Grâce"})
+    plages = [d["range"] for d in c.posts[0]["data"]]
+    assert plages == [f"'{ONGLET}'!O6", f"'{ONGLET}'!R6", f"'{ONGLET}'!T6", f"'{ONGLET}'!U6"]
+    assert not any("!S" in p for p in plages)
