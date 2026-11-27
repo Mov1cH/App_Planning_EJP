@@ -56,7 +56,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465  # Utilisation du port SSL (plus stable sur Render)
 SMTP_USER = os.environ.get("EMAIL_ADDRESS", "movichlemec@gmail.com")
-SMTP_PASSWORD = os.environ.get("EMAIL_PASSWORD", "oeihorxxtpirnpzm")
+SMTP_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")  # jamais de mot de passe dans le code
 
 def execution_envoi_verification(destinataire: str, code: str):
     """Fonction synchrone exécutée dans un thread séparé pour ne pas figer l'application."""
