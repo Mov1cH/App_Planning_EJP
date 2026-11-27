@@ -545,11 +545,20 @@ def tableau_de_bord(request: Request, db: Session = Depends(get_db), eglise: mod
     )
 
 
+def _deroule_jour_j(db: Session, eglise_id: int, jour: date) -> Optional[models.Deroule]:
+    """Déroulé utilisé par le mode jour J : celui du jour, sinon le plus récent enregistré avant (repris tel quel)."""
+    q = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise_id)
+    exact = q.filter(models.Deroule.date == jour).first()
+    if exact:
+        return exact
+    return q.filter(models.Deroule.date < jour).order_by(models.Deroule.date.desc()).first()
+
+
 def _jour_j_actif(db: Session, eglise_id: int, aujourd_hui: date, dimanche: date) -> bool:
     """Le jour du culte, de 2 h avant la première étape à 30 min après la fin prévue."""
     if aujourd_hui != dimanche:
         return False
-    deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise_id, models.Deroule.date == dimanche).first()
+    deroule = _deroule_jour_j(db, eglise_id, dimanche)
     if not deroule:
         return False
     try:
@@ -1237,10 +1246,9 @@ def _etat_jour_j(request: Request, db: Session, eglise: models.Eglise, jour: dat
     if ligne:
         etat = _etat_depuis_ligne(ligne)
     else:
-        deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id,
-                                                   models.Deroule.date == jour).first()
+        deroule = _deroule_jour_j(db, eglise.id, jour)
         if not deroule:
-            return {"ok": False, "erreur": "Pas de déroulé enregistré pour cette date."}
+            return {"ok": False, "erreur": "Aucun déroulé enregistré pour l'instant : créez-en un dans Déroulé."}
         try:
             data = json.loads(deroule.data)
         except (TypeError, ValueError):
@@ -1279,8 +1287,9 @@ def get_jour_j(request: Request, date_str: Optional[str] = None, db: Session = D
         jour = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else services.prochain_dimanche()
     except ValueError:
         jour = services.prochain_dimanche()
-    deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id, models.Deroule.date == jour).first()
-    return render(request, "deroule_live.html", current_eglise=eglise, jour=jour, a_un_deroule=deroule is not None)
+    deroule = _deroule_jour_j(db, eglise.id, jour)
+    return render(request, "deroule_live.html", current_eglise=eglise, jour=jour, a_un_deroule=deroule is not None,
+                  deroule_repris=deroule.date if deroule and deroule.date != jour else None)
 
 
 @app.get("/deroule/jour-j/etat")
@@ -1313,10 +1322,10 @@ async def post_jour_j_action(request: Request, db: Session = Depends(get_db),
     maintenant = datetime.now(timezone.utc)
 
     if not ligne:
-        deroule = db.query(models.Deroule).filter(models.Deroule.eglise_id == eglise.id,
-                                                   models.Deroule.date == jour).first()
+        deroule = _deroule_jour_j(db, eglise.id, jour)
         if not deroule:
-            return JSONResponse({"ok": False, "erreur": "Pas de déroulé enregistré pour cette date."}, status_code=400)
+            return JSONResponse({"ok": False, "erreur": "Aucun déroulé enregistré pour l'instant : créez-en un dans Déroulé."},
+                                status_code=400)
         try:
             data = json.loads(deroule.data)
         except (TypeError, ValueError):

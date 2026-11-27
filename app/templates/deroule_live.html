@@ -11,6 +11,7 @@
     <a class="jj-exit" href="/deroule?date_str={{ jour.isoformat() }}">Quitter le jour J</a>
   </header>
 
+  {% if deroule_repris %}<p class="jj-repris">Pas encore de déroulé pour ce dimanche : celui du {{ '%02d/%02d'|format(deroule_repris.day, deroule_repris.month) }} est repris.</p>{% endif %}
   <p id="jj-erreur" class="jj-erreur" role="alert" hidden></p>
 
   <div id="jj-contenu" hidden>

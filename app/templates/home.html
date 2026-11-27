@@ -14,12 +14,14 @@
 {% endblock %}
 
 {% block content %}
-{% if jour_j %}
-<a class="jj-entry" href="/deroule/jour-j?date_str={{ dimanche.isoformat() }}">
-  <span class="jj-entry-title">Jour J — lancer le chrono</span>
-  <span class="jj-entry-hint">Suivre le culte en direct, étape par étape</span>
+<a class="jj-entry{{ ' jj-entry-live' if jour_j }}" href="/deroule/jour-j?date_str={{ dimanche.isoformat() }}">
+  <span class="jj-entry-icon" aria-hidden="true">{{ icon('clock') }}</span>
+  <span class="jj-entry-txt">
+    <span class="jj-entry-title">{% if jour_j %}Jour J · en direct{% else %}Mode jour J{% endif %}</span>
+    <span class="jj-entry-hint">Chrono du déroulé du {{ dimanche.day }} {{ MOIS_FR[dimanche.month]|lower }}, étape par étape</span>
+  </span>
+  <span class="jj-entry-go" aria-hidden="true">›</span>
 </a>
-{% endif %}
 {% set complet = equipe and not (equipe|selectattr('1.manque')|list) %}
 {% set manquants = equipe|selectattr('1.manque')|list|length %}
 <section class="hero" aria-labelledby="prochain">
