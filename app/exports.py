@@ -233,7 +233,9 @@ def planning_csv(planning: PlanningMois) -> bytes:
 
 
 def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> bytes:
-    """Bilan du suivi des cultes (mois, trimestre, semestre ou année), A4 portrait."""
+    """Bilan du suivi des cultes, A4 portrait, organisé comme le « Tableau de Bord Annuel » du Google Sheet :
+    bilan (6 chiffres clés), Top 10 des STAR et des absences, services prévus et effectués par mois,
+    puis une section par mois (chiffres clés, services effectués et manqués), et le détail par culte."""
     import io as _io
     from datetime import date as _date
     from reportlab.lib.pagesizes import A4
@@ -243,200 +245,199 @@ def stats_pdf(nom_eglise: str, b, couleur: dict, organisation: str = "ejp") -> b
 
     _polices()
     W, H = A4
-    M = 40
+    M = 36
     buf = _io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(W, H))
-    c.setTitle(f"Statistiques {b.periode.libelle} - {nom_eglise}")
+    c.setTitle(f"Tableau de bord {b.periode.libelle} - {nom_eglise}")
     c.setAuthor(nom_eglise)
-    noir, gris, blanc = _hex("#0A0A0A"), _hex("#6B6D73"), _hex("#FFFFFF")
-    acc, clair, doux = _hex(couleur["acc"]), _hex(couleur["light"]), _hex(couleur["soft"])
-    alerte, alerte_doux = _hex("#C2341B"), _hex("#FBE9E4")
+    # Couleurs du Sheet
+    sapin, sapin_fonce, clair = _hex("#2E5D50"), _hex("#23473D"), _hex("#A9C7B8")
+    vert, terre, label = _hex("#5B8B76"), _hex("#AF7C61"), _hex("#E6EEE9")
+    fond, noir, gris, blanc, piste = _hex("#F6F9F7"), _hex("#0A0A0A"), _hex("#6B6D73"), _hex("#FFFFFF"), _hex("#EEF2EF")
     page = [1]
+    LARG = W - 2 * M
+    periode_nom = {"annee": "annuel", "semestre": "du semestre", "trimestre": "du trimestre"}.get(b.periode.type)
 
-    def filigrane():
-        try:
-            if organisation == "icc":
-                m = _filigrane("icc-mark-dark.png", couleur["acc"], 1.1); w, h = m.getSize()
-                c.drawImage(m, W - 330, -120, width=380, height=380 * h / w, mask="auto")
-            else:
-                m = _filigrane("mark-dark.png", couleur["acc"], 1.1)
-                c.drawImage(m, W - 300, -150, width=340, height=340 * 409 / 281, mask="auto")
-        except Exception:  # noqa: BLE001
-            pass
+    def fond_page():
+        c.setFillColor(fond); c.rect(0, 0, W, H, stroke=0, fill=1)
 
     def pied():
         c.setFillColor(gris); c.setFont("Inter-Regular", 8)
         j = _date.today()
-        c.drawString(M, 24, f"Édité le {j.day} {MOIS_FR[j.month].lower()} {j.year} avec Planning des cultes")
-        c.drawRightString(W - M, 24, f"{nom_eglise} · {b.periode.libelle} · page {page[0]}")
+        c.drawString(M, 20, f"Édité le {j.day} {MOIS_FR[j.month].lower()} {j.year} avec Planning des cultes")
+        c.drawRightString(W - M, 20, f"{nom_eglise} · {b.periode.libelle} · page {page[0]}")
 
     def nouvelle_page():
-        pied(); c.showPage(); page[0] += 1; filigrane()
-        c.setFillColor(gris); c.setFont("Inter-SemiBold", 9)
-        c.drawString(M, H - M, f"Statistiques · {b.periode.libelle}")
-        return H - M - 28
+        pied(); c.showPage(); page[0] += 1; fond_page()
+        return H - M
 
     def place(y, besoin):
-        return nouvelle_page() if y - besoin < 48 else y
+        return nouvelle_page() if y - besoin < 40 else y
 
-    def titre_section(y, texte):
-        y = place(y, 60)
-        c.setFillColor(noir); c.setFont("InterDisplay-ExtraBold", 17)
-        c.drawString(M, y, texte)
-        return y - 20
+    def bande(y, texte, besoin=230):
+        y = place(y, besoin)  # la bande, ses chiffres clés et le début de ses graphiques restent sur la même page
+        c.setFillColor(sapin); c.roundRect(M, y - 24, LARG, 24, 6, stroke=0, fill=1)
+        c.setFillColor(blanc); c.setFont("Inter-Bold", 10.5)
+        c.drawString(M + 12, y - 16, texte.upper())
+        return y - 34
 
-    def barres(y, x, largeur, items, valeur_max, suffixe="", nom_w=None):
-        """items : (nom, valeur, note). Retourne y final."""
-        nom_w = nom_w or largeur * 0.38
-        for nom, v, note in items:
-            y = place(y, 18)
-            c.setFillColor(noir); c.setFont("Inter-SemiBold", 9)
-            n = nom
-            if stringWidth(n, "Inter-SemiBold", 9) > nom_w - 6:
-                while len(n) > 3 and stringWidth(n + "…", "Inter-SemiBold", 9) > nom_w - 6:
-                    n = n[:-1]
-                n = n.rstrip() + "…"
-            c.drawString(x, y, n)
-            bx, bw = x + nom_w, largeur - nom_w - 34
-            c.setFillColor(doux); c.roundRect(bx, y - 1, bw, 7, 3.5, stroke=0, fill=1)
-            if v:
-                c.setFillColor(acc); c.roundRect(bx, y - 1, max(7, bw * v / (valeur_max or 1)), 7, 3.5, stroke=0, fill=1)
-            c.setFillColor(noir); c.setFont("Inter-Bold", 9.5)
-            c.drawRightString(x + largeur, y, f"{v}{suffixe}")
-            if note:
-                y -= 11
-                c.setFillColor(gris); c.setFont("Inter-Regular", 7.5)
-                c.drawString(bx, y, note)
-            y -= 16
+    def tuiles(y, cp, dernier_lib, dernier_val, effectif_total):
+        valeurs = [("Services prévus", str(cp.prevus), False), ("Services assurés", str(cp.presents), False),
+                   ("Absences", str(cp.absences), bool(cp.absences)),
+                   ("Taux de présence", f"{cp.taux} %" if cp.taux is not None else "–", False),
+                   ("Effectif total", str(effectif_total), False),
+                   (dernier_lib, "–" if dernier_val is None else str(dernier_val), False)]
+        gap = 6
+        tw = (LARG - 5 * gap) / 6
+        for i, (lib, val, alerte) in enumerate(valeurs):
+            x = M + i * (tw + gap)
+            c.setFillColor(blanc); c.roundRect(x, y - 54, tw, 54, 7, stroke=0, fill=1)
+            c.setFillColor(label); c.roundRect(x, y - 18, tw, 18, 7, stroke=0, fill=1)
+            c.rect(x, y - 18, tw, 8, stroke=0, fill=1)
+            c.setFillColor(sapin); c.setFont("Inter-Bold", 7.2)
+            c.drawString(x + 7, y - 12.5, lib)
+            c.setFillColor(terre if alerte else sapin_fonce); c.setFont("InterDisplay-ExtraBold", 19)
+            c.drawString(x + 7, y - 44, val)
+        return y - 66
+
+    def nom_coupe(nom, largeur, police="Inter-SemiBold", taille=8.5):
+        n = nom.strip()
+        if stringWidth(n, police, taille) <= largeur:
+            return n
+        while len(n) > 3 and stringWidth(n + "…", police, taille) > largeur:
+            n = n[:-1]
+        return n.rstrip() + "…"
+
+    def carte_barres(x, y, largeur, titre, sous_titre, items, coul, vide):
+        """Carte blanche avec barres horizontales. Retourne la hauteur utilisée."""
+        h = 40 + max(1, len(items)) * 15 + 8
+        c.setFillColor(blanc); c.roundRect(x, y - h, largeur, h, 10, stroke=0, fill=1)
+        c.setFillColor(noir); c.setFont("InterDisplay-ExtraBold", 11)
+        c.drawString(x + 12, y - 17, titre)
+        c.setFillColor(gris); c.setFont("Inter-Regular", 7)
+        c.drawString(x + 12, y - 28, nom_coupe(sous_titre, largeur - 24, "Inter-Regular", 7))
+        yy = y - 46
+        if not items:
+            c.setFont("Inter-Regular", 8.5); c.drawString(x + 12, yy, vide)
+            return h
+        vmax = max(v for _, v in items) or 1
+        nom_w = min(110, largeur * 0.36)
+        bx, bw = x + 12 + nom_w, largeur - 24 - nom_w - 22
+        for nom, v in items:
+            c.setFillColor(noir); c.setFont("Inter-SemiBold", 8.5)
+            c.drawString(x + 12, yy, nom_coupe(nom, nom_w - 6))
+            c.setFillColor(piste); c.roundRect(bx, yy - 1.5, bw, 8, 2, stroke=0, fill=1)
+            c.setFillColor(coul); c.roundRect(bx, yy - 1.5, max(3, bw * v / vmax), 8, 2, stroke=0, fill=1)
+            c.setFillColor(noir); c.setFont("Inter-Bold", 8.5)
+            c.drawRightString(x + largeur - 12, yy, str(v))
+            yy -= 15
+        return h
+
+    def deux_cartes(y, gauche, droite):
+        """gauche/droite : (titre, sous-titre, items, couleur, texte si vide). Coupe en pages si besoin."""
+        col = (LARG - 10) / 2
+        g_items, d_items = list(gauche[2]), list(droite[2])
+        premier = True
+        while premier or g_items or d_items:
+            dispo = int((y - 40 - 56) // 15)
+            if dispo < 3:
+                y = nouvelle_page(); continue
+            g, d = g_items[:dispo], d_items[:dispo]
+            g_items, d_items = g_items[dispo:], d_items[dispo:]
+            suite = "" if premier else " (suite)"
+            hg = carte_barres(M, y, col, gauche[0] + suite, gauche[1], g, gauche[3], gauche[4]) if (g or premier) else 0
+            hd = carte_barres(M + col + 10, y, col, droite[0] + suite, droite[1], d, droite[3], droite[4]) if (d or premier) else 0
+            y -= max(hg, hd) + 10
+            premier = False
+            if g_items or d_items:
+                y = nouvelle_page()
         return y
 
-    filigrane()
-    # En-tête
+    def colonnes_mois(y):
+        h = 190
+        y = place(y, h + 10)
+        c.setFillColor(blanc); c.roundRect(M, y - h, LARG, h, 10, stroke=0, fill=1)
+        c.setFillColor(noir); c.setFont("InterDisplay-ExtraBold", 11)
+        c.drawString(M + 12, y - 17, "Services prévus et effectués par mois")
+        c.setFillColor(gris); c.setFont("Inter-Regular", 7)
+        c.drawString(M + 12, y - 28, "Clair : services planifiés. Foncé : services réellement assurés. Un mois vide n'est pas encore rempli.")
+        mois = b.par_mois
+        haut = max([max(lm.compteurs.prevus, lm.compteurs.services) for lm in mois] or [1]) or 1
+        zone_b, zone_h = y - h + 26, h - 26 - 52
+        pas = (LARG - 24) / max(1, len(mois))
+        bw = min(16, pas * 0.3)
+        c.setStrokeColor(label); c.setLineWidth(0.8); c.line(M + 12, zone_b, W - M - 12, zone_b)
+        noms = ["", "Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
+        for i, lm in enumerate(mois):
+            cx = M + 12 + pas * (i + 0.5)
+            for k, (v, coul) in enumerate(((lm.compteurs.prevus, clair), (lm.compteurs.services, sapin))):
+                bh = zone_h * v / haut
+                x = cx - bw - 1 if k == 0 else cx + 1
+                if v:
+                    c.setFillColor(coul); c.rect(x, zone_b, bw, bh, stroke=0, fill=1)
+                    c.setFillColor(gris); c.setFont("Inter-Bold", 6.5); c.drawCentredString(x + bw / 2, zone_b + bh + 3, str(v))
+            c.setFillColor(gris); c.setFont("Inter-SemiBold", 7.5)
+            c.drawCentredString(cx, zone_b - 11, noms[lm.mois])
+        return y - h - 12
+
+    # ----- Page 1 -----
+    fond_page()
     try:
         logo = ImageReader(str(ASSETS / ("icc-logo.png" if organisation == "icc" else "logo.png")))
         lw, lh = logo.getSize()
-        c.drawImage(logo, M, H - M - 34, height=34, width=34 * lw / lh, mask="auto")
+        c.drawImage(logo, W - M - 30 * lw / lh, H - M - 30, height=30, width=30 * lw / lh, mask="auto")
     except Exception:  # noqa: BLE001
         pass
+    y = H - M - 22
+    c.setFillColor(sapin); c.setFont("InterDisplay-ExtraBold", 22)
+    titre = f"TABLEAU DE BORD {periode_nom.upper()} {b.periode.annee}" if periode_nom else f"TABLEAU DE BORD · {b.periode.libelle.upper()}"
+    c.drawString(M, y, titre)
     c.setFillColor(gris); c.setFont("Inter-SemiBold", 9)
-    c.drawRightString(W - M, H - M - 10, nom_eglise)
-    c.drawRightString(W - M, H - M - 23, "Suivi des cultes")
+    c.drawString(M, y - 16, f"{nom_eglise} · suivi des cultes")
+    y -= 34
 
-    y = H - M - 86
-    c.setFillColor(noir); c.setFont("InterDisplay-ExtraBold", 40)
-    c.drawString(M - 1, y, "Bilan")
-    c.setFillColor(acc)
-    c.drawString(M - 1 + stringWidth("Bilan ", "InterDisplay-ExtraBold", 40), y, b.periode.libelle.lower() if b.periode.type != "mois" else b.periode.libelle)
-    y -= 30
-
-    # Chiffres clés
     t = b.total
-    cartes = [
-        (str(len(b.cultes)), f"culte{'s' if len(b.cultes) > 1 else ''} pointé{'s' if len(b.cultes) > 1 else ''}", False),
-        (f"{t.taux if t.taux is not None else '–'} %", f"de présence ({t.presents} sur {t.prevus})", True),
-        (str(t.absences), "absences ou remplacements", False),
-        (str(b.effectif_moyen if b.effectif_moyen is not None else "–"),
-         "personnes en moyenne" + (f" ({b.hommes_moyen} H, {b.femmes_moyen} F"
-                                    + (f", {b.ados_moyen} Ados" if b.ados_moyen is not None else "")
-                                    + (f", {b.enfants_moyen} Enfants" if b.enfants_moyen is not None else "")
-                                    + ")" if b.hommes_moyen is not None else ""), False),
-    ]
-    gap = 8
-    cw = (W - 2 * M - 3 * gap) / 4
-    ch = 70
-    for i, (val, lib, mis) in enumerate(cartes):
-        x = M + i * (cw + gap)
-        c.setFillColor(acc if mis else doux)
-        c.roundRect(x, y - ch, cw, ch, 12, stroke=0, fill=1)
-        c.setFillColor(blanc if mis else (alerte if i == 2 and t.absences else acc)); c.setFont("InterDisplay-ExtraBold", 28)
-        c.drawString(x + 12, y - 34, val)
-        c.setFillColor(clair if mis else gris); c.setFont("Inter-Regular", 7.5)
-        for k, l in enumerate(_lignes(lib, "Inter-Regular", 7.5, cw - 24)[:2]):
-            c.drawString(x + 12, y - 50 - k * 9.5, l)
-    y -= ch + 30
+    if periode_nom:
+        y = bande(y, f"Bilan {periode_nom}")
+        y = tuiles(y, t, "STAR actives", b.stars_actives, b.effectif_total)
+        y = deux_cartes(y, ("Top 10 des STAR", "Les 10 personnes qui ont servi le plus souvent sur la période.",
+                            b.effectues[:10], sapin, "Aucun service sur la période."),
+                        ("Top 10 des absences", "Prévus le plus souvent absents ou remplacés sur la période.",
+                         b.manques[:10], terre, "Aucune absence sur la période."))
+        y = colonnes_mois(y)
 
-    # Mois par mois
-    if b.periode.type != "mois":
-        y = titre_section(y, "Mois par mois")
-        mx = max([lm.compteurs.services for lm in b.par_mois] or [1])
-        items = []
-        for lm in b.par_mois:
-            note = (f"{lm.cultes} culte{'s' if lm.cultes > 1 else ''}"
-                    + (f" · présence {lm.compteurs.taux} %" if lm.compteurs.taux is not None else "")
-                    + (f" · {lm.effectif_moyen} pers. en moyenne" if lm.effectif_moyen else "")) if lm.cultes else "aucun culte pointé"
-            items.append((MOIS_FR[lm.mois], lm.compteurs.services, note))
-        y = barres(y, M, W - 2 * M, items, mx, " serv.", nom_w=110) - 14
+    for lm in b.par_mois:
+        if not lm.cultes and periode_nom:
+            continue
+        y = bande(y, f"{MOIS_FR[lm.mois]} {lm.annee}")
+        y = tuiles(y, lm.compteurs, "Moyenne par culte", lm.effectif_moyen, lm.effectif_total)
+        y = deux_cartes(y, (f"{MOIS_FR[lm.mois]} : services effectués", "Nombre de fois où chaque STAR a servi ce mois-ci.",
+                            lm.effectues, vert, "Aucun service pointé ce mois-ci."),
+                        (f"{MOIS_FR[lm.mois]} : services manqués", "Nombre de fois où chaque personne prévue n'a pas servi.",
+                         lm.manques, terre, "Aucune absence ce mois-ci."))
 
-    # Départements et personnes, en deux colonnes
-    col = (W - 2 * M - 24) / 2
-    y = place(y, 80)
-    c.setFillColor(noir); c.setFont("InterDisplay-ExtraBold", 17)
-    c.drawString(M, y, "Par département")
-    c.drawString(M + col + 24, y, "Services effectués")
-    y -= 20
-    deps = [(n, v, "") for n, v in b.par_departement]
-    pers = [(n, v, "") for n, v in b.effectues]
-    md = max([v for _, v, _ in deps] or [1]); mp = max([v for _, v, _ in pers] or [1])
-    i = 0
-    while i < max(len(deps), len(pers)):
-        y = place(y, 18)
-        if i < len(deps):
-            barres(y, M, col, [deps[i]], md)
-        if i < len(pers):
-            barres(y, M + col + 24, col, [pers[i]], mp)
-        y -= 13.5
-        i += 1
-    y -= 14
-
-    # Services manqués
-    y = titre_section(y, "Services manqués")
-    if not b.manques:
-        c.setFillColor(gris); c.setFont("Inter-Regular", 9.5)
-        c.drawString(M, y, "Aucune absence : toutes les personnes prévues ont servi.")
-        y -= 24
-    else:
-        from .stats import cle_nom
-        for nom, n in b.manques:
-            details = [f"{d.day} {MOIS_FR[d.month][:4].lower()}. {dep}" + (f" (remplacé par {s})" if s else "")
-                       for d, dep, p, s in b.absences_detail if cle_nom(p) == cle_nom(nom)]
-            lignes = _lignes(" · ".join(details), "Inter-Regular", 8, W - 2 * M - 150)
-            y = place(y, 14 + 10 * len(lignes))
-            c.setFillColor(alerte_doux); c.roundRect(M, y - 4, 22, 14, 7, stroke=0, fill=1)
-            c.setFillColor(alerte); c.setFont("Inter-Bold", 8.5); c.drawCentredString(M + 11, y, str(n))
-            c.setFillColor(noir); c.setFont("Inter-Bold", 9.5); c.drawString(M + 32, y, nom)
-            c.setFillColor(gris); c.setFont("Inter-Regular", 8)
-            for k, l in enumerate(lignes):
-                c.drawString(M + 150, y - k * 10, l)
-            y -= 8 + 10 * len(lignes)
-        y -= 10
-
-    # Détail par culte
-    y = titre_section(y, "Détail par culte")
-    colonnes = [("Date", M), ("Effectif", M + 95), ("Hommes", M + 150), ("Femmes", M + 195),
-                ("Ados", M + 240), ("Enfants", M + 280), ("Services", M + 335), ("Présence", M + 400),
-                ("Absences", M + 465)]
-    y = place(y, 30)
-    c.setFillColor(gris); c.setFont("Inter-SemiBold", 8)
+    # ----- Détail par culte (effectifs comme dans le Sheet) -----
+    y = bande(y, "Détail par culte", besoin=40 + 17 * min(len(b.cultes), 6))
+    colonnes = [("Date", M + 8)] + [(lib, M + 115 + 50 * i) for i, lib in enumerate(
+        ("Hommes", "Femmes", "Ados", "Enfants", "Total", "Services", "Présence", "Absences"))]
+    c.setFillColor(sapin); c.setFont("Inter-Bold", 8)
     for lib, x in colonnes:
         c.drawString(x, y, lib)
-    y -= 8
-    c.setStrokeColor(clair); c.setLineWidth(0.6); c.line(M, y, W - M, y)
-    y -= 13
+    y -= 6
     for lc in b.cultes:
-        y = place(y, 16)
+        y = place(y, 18)
         cp = lc.compteurs
+        c.setFillColor(blanc); c.rect(M, y - 13, LARG, 15, stroke=0, fill=1)
         vals = [f"{lc.date.day} {MOIS_FR[lc.date.month].lower()}",
-                "–" if lc.effectif is None else str(lc.effectif),
                 "–" if lc.hommes is None else str(lc.hommes), "–" if lc.femmes is None else str(lc.femmes),
                 "–" if lc.ados is None else str(lc.ados), "–" if lc.enfants is None else str(lc.enfants),
+                "–" if lc.effectif is None else str(lc.effectif),
                 str(cp.services), "–" if cp.taux is None else f"{cp.taux} %", str(cp.absences)]
         for (lib, x), v in zip(colonnes, vals):
-            c.setFillColor(alerte if lib == "Absences" and cp.absences else noir)
-            c.setFont("Inter-Bold" if lib in ("Date", "Effectif") else "Inter-Regular", 9)
-            c.drawString(x, y, v)
-        y -= 6
-        c.setStrokeColor(doux); c.line(M, y, W - M, y)
-        y -= 12
+            c.setFillColor(terre if lib == "Absences" and cp.absences else noir)
+            c.setFont("Inter-Bold" if lib in ("Date", "Total") else "Inter-Regular", 8.5)
+            c.drawString(x, y - 9, v)
+        y -= 17
 
     pied()
     c.showPage()

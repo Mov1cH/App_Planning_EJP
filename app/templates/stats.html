@@ -2,7 +2,6 @@
 {% block title %}Stats · {{ p.libelle }}{% endblock %}
 {% block page_class %}paper{% endblock %}
 {% block content %}
-{% from "_tableau_bord.html" import tableau_bord %}
 {% set t = b.total %}
 <div class="page-head">
   <div>
@@ -13,9 +12,14 @@
     <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ precedente.annee }}&n={{ precedente.n }}" aria-label="Période précédente">{{ icon('chevron-left') }}</a>
     <a class="btn btn-icon" href="/stats?type={{ p.type }}&annee={{ suivante.annee }}&n={{ suivante.n }}" aria-label="Période suivante">{{ icon('chevron-right') }}</a>
     {% if not b.vide %}<a class="btn" href="/stats/export/pdf?type={{ p.type }}&annee={{ p.annee }}&n={{ p.n }}">{{ icon('download') }} PDF</a>{% endif %}
-    <a class="btn" href="/stats/sheet/recuperer">Récupérer depuis le Google Sheet</a>
-    <a class="btn btn-quiet" href="/stats/historique">Historique de synchro</a>
-    <form action="/stats/sheet/synchroniser" method="post"><button class="btn" type="submit" data-loading>Synchroniser le Google Sheet</button></form>
+    <details class="menu-sheet">
+      <summary class="btn">{{ icon('sheet') }} Google Sheet</summary>
+      <div class="menu-sheet-liste">
+        <form action="/stats/sheet/synchroniser" method="post"><button type="submit" data-loading>Synchroniser maintenant</button></form>
+        <a href="/stats/sheet/recuperer">Récupérer depuis le Sheet</a>
+        <a href="/stats/historique">Historique de synchro</a>
+      </div>
+    </details>
     <a class="btn btn-acc" href="/stats/culte?date_str={{ (a_pointer[-1] if a_pointer else dernier).isoformat() }}">{{ icon('check-square') }} Pointer un culte</a>
   </div>
 </div>
@@ -60,7 +64,29 @@
 </div>
 {% else %}
 
-{{ tableau_bord(b, p, MOIS_FR) }}
+<section class="kpis" aria-label="Chiffres clés">
+  <div class="kpi"><b>{{ b.cultes|length }}</b><span>culte{{ 's' if b.cultes|length > 1 }} pointé{{ 's' if b.cultes|length > 1 }}</span></div>
+  <div class="kpi is-acc"><b>{{ t.taux if t.taux is not none else '–' }}<small>%</small></b><span>de présence ({{ t.presents }} sur {{ t.prevus }} prévus)</span></div>
+  <div class="kpi{{ ' is-alert' if t.absences }}"><b>{{ t.absences }}</b><span>absence{{ 's' if t.absences > 1 }} ou remplacement{{ 's' if t.absences > 1 }}</span></div>
+  <div class="kpi"><b>{{ b.effectif_moyen if b.effectif_moyen is not none else '–' }}</b><span>personnes en moyenne au culte{% if b.hommes_moyen is not none %} · {{ b.hommes_moyen }} H, {{ b.femmes_moyen }} F{% if b.ados_moyen is not none %}, {{ b.ados_moyen }} Ados{% endif %}{% if b.enfants_moyen is not none %}, {{ b.enfants_moyen }} Enfants{% endif %}{% endif %}</span></div>
+</section>
+
+{% if p.type != 'mois' %}
+<section class="stat-block" aria-labelledby="t-mois">
+  <h2 id="t-mois">Mois par mois</h2>
+  {% set max_m = (b.par_mois|map(attribute='compteurs.services')|max) or 1 %}
+  <ul class="bars">
+    {% for lm in b.par_mois %}
+    <li>
+      <a class="bar-name" href="/stats?type=mois&annee={{ lm.annee }}&n={{ lm.mois }}">{{ MOIS_FR[lm.mois] }}</a>
+      <span class="bar"><i style="width: {{ (100 * lm.compteurs.services / max_m)|round(1) }}%"></i></span>
+      <span class="bar-val">{{ lm.compteurs.services }}<small> services</small></span>
+      <span class="bar-meta">{% if lm.cultes %}{{ lm.cultes }} culte{{ 's' if lm.cultes > 1 }}{% if lm.compteurs.taux is not none %} · {{ lm.compteurs.taux }} %{% endif %}{% if lm.effectif_moyen %} · {{ lm.effectif_moyen }} pers.{% endif %}{% else %}—{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 
 <div class="stat-grid">
   <section class="stat-block" aria-labelledby="t-cultes">
@@ -108,7 +134,7 @@
 
 <div class="stat-grid">
   <section class="stat-block" aria-labelledby="t-eff">
-    <h2 id="t-eff">Tous les services effectués</h2>
+    <h2 id="t-eff">Services effectués</h2>
     {% set max_e = (b.effectues|map(attribute=1)|max) if b.effectues else 1 %}
     <ul class="bars" data-more>
       {% for nom, n in b.effectues %}
@@ -119,7 +145,7 @@
   </section>
 
   <section class="stat-block" aria-labelledby="t-manq">
-    <h2 id="t-manq">Détail des absences</h2>
+    <h2 id="t-manq">Services manqués</h2>
     {% if b.manques %}
     <ul class="rows">
       {% for nom, n in b.manques %}

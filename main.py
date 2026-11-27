@@ -1709,7 +1709,6 @@ def supprimer_departement(dep_id: int, request: Request, db: Session = Depends(g
 @app.get("/stats/export/pdf")
 def export_stats_pdf(type: Optional[str] = None, annee: Optional[int] = None, n: Optional[int] = None,
                      db: Session = Depends(get_db), eglise: models.Eglise = Depends(get_current_eglise)):
-    _filet_import_sheet(request, db, eglise)
     p = _periode_demandee(type, annee, n)
     b = stats.bilan(db, eglise.id, p)
     couleur = config.COULEURS.get(eglise.couleur or organisation_de(eglise)["couleur"], config.COULEURS[config.COULEUR_DEFAUT])

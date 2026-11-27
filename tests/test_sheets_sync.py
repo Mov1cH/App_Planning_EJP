@@ -530,3 +530,30 @@ def test_ecriture_agrandit_la_case_du_dimanche():
     req = c.posts[0]["requests"]
     assert req[0]["insertDimension"]["range"]["startIndex"] == 54  # insérées à l'intérieur du bloc
     assert req[-1]["mergeCells"]["range"]["endRowIndex"] == 57  # la case couvre les 5 lignes
+
+
+def test_pages_stats_et_pdf_repondent(monkeypatch, tmp_path):
+    """La page Stats et l'export PDF s'affichent (régression : l'export PDF plantait)."""
+    import os
+    os.environ.setdefault("SECRET_KEY", "test")
+    from fastapi.testclient import TestClient
+    import main
+    from app import stats as st
+    eng = create_engine(f"sqlite:///{tmp_path}/t.db")
+    models.Base.metadata.create_all(bind=eng)
+    S = sessionmaker(bind=eng)
+    db = S()
+    eglise = models.Eglise(nom_eglise="Test", email="pdf@test.local", mot_de_passe_hash="x", is_verified=True)
+    db.add(eglise); db.commit()
+    st.enregistrer_culte(db, eglise.id, JOUR, 10, 12, [("Accueil", "Anne", "Anne"), ("Sono", "Franck", "Gael")], 3, 4)
+    main.app.dependency_overrides[main.get_db] = lambda: S()
+    main.app.dependency_overrides[main.get_current_eglise] = lambda: eglise
+    monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_JSON", raising=False)
+    try:
+        c = TestClient(main.app)
+        assert c.get("/stats?type=mois&annee=2026&n=11").status_code == 200
+        for t in ("mois", "annee"):
+            r = c.get(f"/stats/export/pdf?type={t}&annee=2026&n=11")
+            assert r.status_code == 200 and r.content[:4] == b"%PDF"
+    finally:
+        main.app.dependency_overrides.clear()
