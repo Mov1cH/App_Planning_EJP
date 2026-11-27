@@ -587,3 +587,20 @@ def test_ecriture_des_effectifs_ne_touche_jamais_la_colonne_total():
     plages = [d["range"] for d in c.posts[0]["data"]]
     assert plages == [f"'{ONGLET}'!O6", f"'{ONGLET}'!R6", f"'{ONGLET}'!T6", f"'{ONGLET}'!U6"]
     assert not any("!S" in p for p in plages)
+
+
+def test_echange_de_service_n_est_pas_un_service_manque(tmp_path):
+    """Deux personnes prévues qui échangent leur poste le même dimanche ont toutes deux servi."""
+    from app import stats as st
+    eng = create_engine(f"sqlite:///{tmp_path}/t.db")
+    models.Base.metadata.create_all(bind=eng)
+    db = sessionmaker(bind=eng)()
+    eglise = models.Eglise(nom_eglise="Test", email="ech@test.local", mot_de_passe_hash="x", is_verified=True)
+    db.add(eglise); db.commit()
+    st.enregistrer_culte(db, eglise.id, JOUR, None, None, [
+        ("Prière des STAR", "Tahira", "Morel"), ("Coordination", "Morel", "Tahira "),
+        ("Sono", "Franck", "Gael"), ("Accueil", "Anne", ""),
+    ])
+    b = st.bilan(db, eglise.id, st.periode("mois", JOUR.year, JOUR.month))
+    assert (b.total.prevus, b.total.presents, b.total.absences) == (4, 2, 2)
+    assert sorted(n for n, _ in b.manques) == ["Anne", "Franck"]

@@ -296,11 +296,21 @@ class Bilan:
         return round(sum(v) / len(v)) if v else None
 
 
+def a_servi_ce_jour(prevu: str, servis: set) -> bool:
+    """La personne prévue a bien servi ce dimanche : à son poste, ou à un autre (échange de service avec quelqu'un)."""
+    return cle_nom(prevu) in servis
+
+
+def servis_du_culte(services) -> set:
+    return {cle_nom(s.servi) for s in services if s.servi}
+
+
 def _compter(services, compteurs: Compteurs):
+    servis = servis_du_culte(services)
     for s in services:
         if s.prevu:
             compteurs.prevus += 1
-            if cle_nom(s.servi) == cle_nom(s.prevu):
+            if a_servi_ce_jour(s.prevu, servis):
                 compteurs.presents += 1
             else:
                 compteurs.absences += 1
@@ -334,12 +344,13 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         lc = LigneCulte(c.date, c.hommes, c.femmes, cpt, c.ados, c.enfants, c.nouveaux, c.nouveaux_noms)
         lignes.append(lc)
         par_mois_c[(c.date.year, c.date.month)].append(lc)
+        servis = servis_du_culte(c.services)
         for s in c.services:
             mois_c = (c.date.year, c.date.month)
             if s.servi:
                 k = cle_nom(s.departement); graphies_dep[k][s.departement] += 1; par_dep[k] += 1
                 k = cle_nom(s.servi); graphies[k][s.servi] += 1; effectues[k] += 1; eff_mois[mois_c][k] += 1
-            if s.prevu and cle_nom(s.servi) != cle_nom(s.prevu):
+            if s.prevu and not a_servi_ce_jour(s.prevu, servis):
                 k = cle_nom(s.prevu); graphies[k][s.prevu] += 1; manques[k] += 1; manq_mois[mois_c][k] += 1
                 absences_detail.append((c.date, s.departement, s.prevu, s.servi))
 

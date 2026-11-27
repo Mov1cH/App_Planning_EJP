@@ -530,7 +530,7 @@ a.bar-name:hover { color: var(--acc); }
 .pt-rows { display: grid; gap: 8px; margin-bottom: 6px; }
 .pt-row .input { min-height: 46px; }
 .pt-state { font-size: 13px; font-weight: 700; color: var(--muted); }
-.pt-row[data-etat="present"] .pt-state { color: var(--acc); }
+.pt-row[data-etat="present"] .pt-state, .pt-row[data-etat="echange"] .pt-state { color: var(--acc); }
 .pt-row[data-etat="absent"] .pt-state, .pt-row[data-etat="remplace"] .pt-state { color: var(--alert); }
 .pt-row[data-etat="absent"] [name=servi] { border-color: var(--alert); background: var(--alert-soft); }
 .pt-ops { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }

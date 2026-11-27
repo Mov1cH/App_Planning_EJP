@@ -108,20 +108,27 @@
   var connus = {{ (membres if a_des_stars else [])|map('lower')|list|tojson }}.map(function (n) { return cle(n); });
   function verifier(input) { var v = input.value.trim(); input.classList.toggle("is-unknown", connus.length > 0 && v !== "" && connus.indexOf(cle(v)) === -1); input.title = input.classList.contains("is-unknown") ? "Pas dans la liste des STAR" : ""; }
   function cle(s) { return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
-  function etat(row) {
+  function servisDuJour() {
+    var v = {};
+    form.querySelectorAll('.pt-row [name=servi]').forEach(function (i) { if (i.value.trim()) v[cle(i.value)] = true; });
+    return v;
+  }
+  function etat(row, servis) {
+    servis = servis || servisDuJour();
     var p = row.querySelector('[name=prevu]').value.trim(), s = row.querySelector('[name=servi]').value.trim();
     var el = row.querySelector(".pt-state"), btn = row.querySelector("[data-absent]");
-    var e = !p && !s ? "" : !p ? "ajoute" : !s ? "absent" : cle(p) === cle(s) ? "present" : "remplace";
+    // Prévu qui a servi à un autre poste ce dimanche (échange) : il n'a pas manqué son service.
+    var e = !p && !s ? "" : !p ? "ajoute" : cle(p) === cle(s) ? "present" : servis[cle(p)] ? "echange" : !s ? "absent" : "remplace";
     row.dataset.etat = e;
     verifier(row.querySelector('[name=prevu]')); verifier(row.querySelector('[name=servi]'));
-    el.textContent = { "": "", ajoute: "Ajouté", absent: "Service manqué", present: "Présent", remplace: "Remplacé" }[e];
+    el.textContent = { "": "", ajoute: "Ajouté", absent: "Service manqué", present: "Présent", remplace: "Remplacé", echange: "Échangé" }[e];
     btn.textContent = e === "absent" ? "Présent" : "Manqué";
     btn.hidden = !p;
     return e;
   }
   function resume() {
-    var n = { present: 0, absent: 0, remplace: 0 };
-    form.querySelectorAll(".pt-row").forEach(function (r) { var e = etat(r); if (n[e] !== undefined) n[e]++; });
+    var n = { present: 0, absent: 0, remplace: 0 }, servis = servisDuJour();
+    form.querySelectorAll(".pt-row").forEach(function (r) { var e = etat(r, servis); if (e === "echange") e = "present"; if (n[e] !== undefined) n[e]++; });
     form.querySelector("[data-sum-present]").textContent = n.present;
     form.querySelector("[data-sum-absent]").textContent = n.absent;
     form.querySelector("[data-sum-remplace]").textContent = n.remplace;
