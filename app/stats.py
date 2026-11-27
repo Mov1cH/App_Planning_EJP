@@ -236,6 +236,8 @@ class LigneMois:
     effectif_total: int = 0
     effectues: List[Tuple[str, int]] = field(default_factory=list)
     manques: List[Tuple[str, int]] = field(default_factory=list)
+    departements: Dict[str, int] = field(default_factory=dict)  # services assurés par département ce mois-ci
+    nouveaux: int = 0
 
 
 @dataclass
@@ -272,8 +274,24 @@ class Bilan:
 
     @property
     def effectif_moyen(self) -> Optional[int]:
-        valeurs = [c.effectif for c in self.cultes if c.effectif is not None]
+        valeurs = [c.effectif for c in self.cultes if c.effectif]  # comme le Sheet : cultes dont l'effectif est > 0
         return round(sum(valeurs) / len(valeurs)) if valeurs else None
+
+    @property
+    def record(self) -> Optional["LigneCulte"]:
+        """Le dimanche le plus fréquenté de la période."""
+        avec = [c for c in self.cultes if c.effectif]
+        return max(avec, key=lambda c: c.effectif) if avec else None
+
+    @property
+    def cultes_avec_effectif(self) -> int:
+        return sum(1 for c in self.cultes if c.effectif)
+
+    @property
+    def nouveaux_moyen(self) -> Optional[float]:
+        """Nouveaux venus par dimanche pointé (cultes dont l'effectif ou les nouveaux venus sont renseignés)."""
+        n = [c for c in self.cultes if c.effectif or c.nouveaux]
+        return round(sum(c.nouveaux or 0 for c in n) / len(n), 1) if n else None
 
     @property
     def hommes_moyen(self) -> Optional[int]:
@@ -336,6 +354,7 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
     par_mois_c: Dict[Tuple[int, int], List[LigneCulte]] = defaultdict(list)
     eff_mois: Dict[Tuple[int, int], Counter] = defaultdict(Counter)
     manq_mois: Dict[Tuple[int, int], Counter] = defaultdict(Counter)
+    dep_mois: Dict[Tuple[int, int], Counter] = defaultdict(Counter)
 
     for c in cultes:
         cpt = Compteurs()
@@ -348,7 +367,7 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
         for s in c.services:
             mois_c = (c.date.year, c.date.month)
             if s.servi:
-                k = cle_nom(s.departement); graphies_dep[k][s.departement] += 1; par_dep[k] += 1
+                k = cle_nom(s.departement); graphies_dep[k][s.departement] += 1; par_dep[k] += 1; dep_mois[mois_c][k] += 1
                 k = cle_nom(s.servi); graphies[k][s.servi] += 1; effectues[k] += 1; eff_mois[mois_c][k] += 1
             if s.prevu and not a_servi_ce_jour(s.prevu, servis):
                 k = cle_nom(s.prevu); graphies[k][s.prevu] += 1; manques[k] += 1; manq_mois[mois_c][k] += 1
@@ -375,6 +394,8 @@ def bilan(db: Session, eglise_id: int, p: Periode) -> Bilan:
     for lm in par_mois:
         lm.effectues = _classement(eff_mois[(lm.annee, lm.mois)], graphies)
         lm.manques = _classement(manq_mois[(lm.annee, lm.mois)], graphies)
+        lm.departements = {graphies_dep[k].most_common(1)[0][0]: n for k, n in dep_mois[(lm.annee, lm.mois)].items()}
+        lm.nouveaux = sum(x.nouveaux or 0 for x in par_mois_c.get((lm.annee, lm.mois), []))
     return Bilan(p, lignes, total, _classement(par_dep, graphies_dep), _classement(effectues, graphies),
                  _classement(manques, graphies), par_mois, absences_detail,
                  sans_service, sorted(hors_liste, key=cle_nom))
