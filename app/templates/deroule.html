@@ -419,14 +419,66 @@
   });
   $("dr-photo-remove").addEventListener("click", function () { state.photo = ""; changed(); });
 
+  // ----- Export de l'affiche en image -----
+  var NOM_IMAGE = "deroule-" + JOUR + ".jpg";
+  var MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  function partager(file) {
+    return navigator.share({ files: [file], title: NOM_IMAGE });
+  }
+
+  // Aperçu plein écran : appui long sur l'image pour l'enregistrer (iPhone), ou bouton Enregistrer / Partager.
+  function apercu(dataUrl, file) {
+    var old = document.getElementById("dr-apercu"); if (old) old.remove();
+    var ov = document.createElement("div"); ov.id = "dr-apercu"; ov.className = "dr-apercu";
+    ov.innerHTML = '<div class="dr-apercu-box"><img alt="Déroulé" src="' + dataUrl + '">' +
+      '<p>Sur téléphone : appui long sur l\'image → « Enregistrer dans Photos ».</p>' +
+      '<div class="dr-apercu-actions"><button type="button" class="btn btn-acc" data-act="save">Enregistrer / partager</button>' +
+      '<button type="button" class="btn" data-act="close">Fermer</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", function (ev) {
+      var act = ev.target.closest("[data-act]"); act = act && act.dataset.act;
+      if (act === "close" || ev.target === ov) { ov.remove(); return; }
+      if (act === "save") {
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) { partager(file).catch(function () {}); return; }
+        var a = document.createElement("a"); a.href = dataUrl; a.download = NOM_IMAGE; document.body.appendChild(a); a.click(); a.remove();
+      }
+    });
+  }
+
+  function livrer(dataUrl) {
+    return fetch(dataUrl).then(function (r) { return r.blob(); }).then(function (blob) {
+      var file = null;
+      try { file = new File([blob], NOM_IMAGE, { type: "image/jpeg" }); } catch (e) { file = null; }
+      if (MOBILE) {
+        // Téléphone : feuille de partage (« Enregistrer l'image »). Si le navigateur la refuse après le rendu,
+        // on montre l'aperçu, où un nouvel appui ouvre le partage.
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+          return partager(file).catch(function (e) { if (!e || e.name !== "AbortError") apercu(dataUrl, file); });
+        }
+        apercu(dataUrl, file); return;
+      }
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = NOM_IMAGE; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    });
+  }
+
   $("dr-export").addEventListener("click", function () {
     var btn = this; btn.classList.add("is-loading");
     var done = function () { btn.classList.remove("is-loading"); };
+    var opts = { quality: 0.92, backgroundColor: "#ffffff", pixelRatio: 2, cacheBust: true, width: 1080, height: 1550, style: { transform: "none" } };
+    var imgs = Array.prototype.slice.call(activePoster().querySelectorAll("img"));
+    var pret = Promise.all(imgs.map(function (i) { return i.decode ? i.decode().catch(function () {}) : null; }));
+    // Safari rend parfois une image vide au premier passage (polices et images pas encore intégrées) : on fait un rendu d'essai.
     var run = function () {
-      return window.htmlToImage.toJpeg(activePoster(), { quality: 0.92, backgroundColor: "#ffffff", pixelRatio: 2, cacheBust: true, width: 1080, height: 1550, style: { transform: "none" } })
-        .then(function (data) { var a = document.createElement("a"); a.href = data; a.download = "deroule-" + JOUR + ".jpg"; document.body.appendChild(a); a.click(); a.remove(); });
+      return window.htmlToImage.toJpeg(activePoster(), opts).catch(function () { return null; })
+        .then(function () { return window.htmlToImage.toJpeg(activePoster(), opts); })
+        .then(livrer);
     };
-    (document.fonts ? document.fonts.ready : Promise.resolve()).then(save).then(run).then(done).catch(function () { done(); $("dr-state").textContent = "L'image n'a pas pu être créée. Réessayez."; });
+    if (dirty) save();
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { return pret; }).then(run).then(done)
+      .catch(function (e) { done(); $("dr-state").textContent = "L'image n'a pas pu être créée (" + ((e && e.message) || "erreur") + "). Réessayez."; });
   });
 
   window.addEventListener("beforeunload", function (ev) { if (dirty) { ev.preventDefault(); ev.returnValue = ""; } });

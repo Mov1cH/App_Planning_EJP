@@ -840,3 +840,10 @@ a.bar-name:hover { color: var(--acc); }
 .nouveaux { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr); gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .22); }
 .nouveaux .field { margin: 0; }
 @media (max-width: 600px) { .nouveaux { grid-template-columns: minmax(0, 1fr); } }
+
+/* Aperçu de l'image du déroulé (téléchargement sur téléphone) */
+.dr-apercu { position: fixed; inset: 0; z-index: 1000; background: rgba(10,10,10,.82); display: grid; place-items: center; padding: 16px; }
+.dr-apercu-box { background: var(--bg, #fff); border-radius: 14px; padding: 14px; max-width: 460px; width: 100%; max-height: 100%; overflow: auto; text-align: center; }
+.dr-apercu-box img { width: 100%; height: auto; border-radius: 8px; display: block; -webkit-touch-callout: default; }
+.dr-apercu-box p { font-size: 13px; opacity: .75; margin: 10px 0; }
+.dr-apercu-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
